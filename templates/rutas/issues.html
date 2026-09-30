@@ -2,7 +2,20 @@
 {% block breadcrumb %}Incidencias{% endblock %}
 {% block content %}
 <div class="page-heading"><div><p class="eyebrow">CONCILIACIÓN</p><h1>Incidencias pendientes</h1><p class="muted">Compara el origen y documenta cada decisión antes de activar rutas.</p></div></div>
-<form method="get" class="filter-panel"><select name="kind" aria-label="Tipo de incidencia"><option value="">Todos los tipos</option>{% for item in kinds %}<option value="{{ item }}" {% if kind == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select><button class="button secondary">Filtrar</button></form>
-<div class="table-card"><div class="table-caption"><strong>{{ page.paginator.count }} pendientes</strong></div><div class="table-scroll"><table><thead><tr><th>Origen</th><th>Ubicación</th><th>Código</th><th>Motivo</th><th>Resolución</th></tr></thead><tbody>{% for issue in page %}<tr><td>{{ issue.run.source.classification|default:issue.run.filename }}</td><td>{{ issue.sheet }} · {{ issue.row }}</td><td>{% if issue.linked_route %}<a href="{% url 'rutas:detail' issue.linked_route.pk %}">{{ issue.code }}</a>{% else %}{{ issue.code }}{% endif %}</td><td><strong>{{ issue.kind }}</strong><small>{{ issue.detail }}</small></td><td>{% if perms.rutas.change_importissue %}<form method="post" action="{% url 'rutas:issue_resolve' issue.pk %}" class="resolution-form">{% csrf_token %}<input name="resolution_note" required minlength="12" aria-label="Decisión para {{ issue.code }}" placeholder="Decisión y evidencia"><button class="button secondary">Resolver</button></form>{% else %}Solo lectura{% endif %}</td></tr>{% empty %}<tr><td colspan="5" class="empty">No hay incidencias pendientes.</td></tr>{% endfor %}</tbody></table></div></div>
-{% if page.paginator.num_pages > 1 %}<nav class="pagination" aria-label="Páginas">{% if page.has_previous %}<a href="?kind={{ kind|urlencode }}&page={{ page.previous_page_number }}">← Anterior</a>{% endif %}<span>Página {{ page.number }} de {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?kind={{ kind|urlencode }}&page={{ page.next_page_number }}">Siguiente →</a>{% endif %}</nav>{% endif %}
+<form method="get" class="filter-panel">
+  <select name="client" aria-label="Cliente"><option value="">Todos los clientes</option>{% for client in clients %}<option value="{{ client.name }}" {% if client_name == client.name %}selected{% endif %}>{{ client.name }}</option>{% endfor %}</select>
+  <select name="kind" aria-label="Tipo de incidencia"><option value="">Todos los tipos</option>{% for item in kinds %}<option value="{{ item }}" {% if kind == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select>
+  <button class="button secondary">Filtrar</button>
+</form>
+<div class="table-card"><div class="table-caption"><strong>{{ page.paginator.count }} pendientes</strong></div><div class="table-scroll"><table>
+  <thead><tr><th>Cliente / origen</th><th>Ubicación</th><th>Código</th><th>Motivo</th><th>Resolución</th></tr></thead><tbody>
+  {% for issue in page %}<tr>
+    <td>{% if issue.run.source %}{{ issue.run.source.client.name }}<small>{{ issue.run.source.classification }}</small>{% else %}{{ issue.run.summary.client }}<small>{{ issue.run.summary.variant }}</small>{% endif %}</td>
+    <td>{{ issue.sheet }} · {{ issue.row }}</td>
+    <td>{% if issue.linked_route %}<a href="{% url 'rutas:detail' issue.linked_route.pk %}">{{ issue.code }}</a>{% else %}{{ issue.code }}{% endif %}</td>
+    <td><strong>{{ issue.kind }}</strong><small>{{ issue.detail }}</small></td>
+    <td>{% if perms.rutas.change_importissue %}<form method="post" action="{% url 'rutas:issue_resolve' issue.pk %}" class="resolution-form">{% csrf_token %}<input name="resolution_note" required minlength="12" aria-label="Decisión para {{ issue.code }}" placeholder="Decisión y evidencia"><button class="button secondary">Resolver</button></form>{% else %}Solo lectura{% endif %}</td>
+  </tr>{% empty %}<tr><td colspan="5" class="empty">No hay incidencias pendientes.</td></tr>{% endfor %}
+  </tbody></table></div></div>
+{% if page.paginator.num_pages > 1 %}<nav class="pagination" aria-label="Páginas">{% if page.has_previous %}<a href="?client={{ client_name|urlencode }}&kind={{ kind|urlencode }}&page={{ page.previous_page_number }}">← Anterior</a>{% endif %}<span>Página {{ page.number }} de {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?client={{ client_name|urlencode }}&kind={{ kind|urlencode }}&page={{ page.next_page_number }}">Siguiente →</a>{% endif %}</nav>{% endif %}
 {% endblock %}

@@ -16,6 +16,8 @@ WRITABLE_ROWS = 15
 def ensure_emittable(route):
     if route.status != Route.ACTIVE:
         raise ValueError(f"La ruta {route.code} requiere revisión antes de emitir.")
+    if route.source_id and not route.source.print_approved:
+        raise ValueError(f"El formato de impresión de {route.source.filename} sigue pendiente de validar.")
     if route.source_id and ImportIssue.objects.filter(
         run__source_id=route.source_id, sheet="Ruta", row=route.source_row, resolved=False
     ).exists():
@@ -78,7 +80,7 @@ def preview_labels_for_line(line):
         "operations", "part__components__component"
     ).get(pk=line.route_id)
     notes = []
-    needs_review = parent.status != Route.ACTIVE or (
+    needs_review = parent.status != Route.ACTIVE or (parent.source_id and not parent.source.print_approved) or (
         parent.source_id and ImportIssue.objects.filter(
             run__source_id=parent.source_id, sheet="Ruta", row=parent.source_row, resolved=False
         ).exists()

@@ -2,6 +2,7 @@ from django import forms
 from django.forms import inlineformset_factory
 from django.forms.models import BaseInlineFormSet
 from rutas.models import ImportIssue, Route, Operation, Schedule, ScheduleLine
+from rutas.services.source_catalog import CLIENT_VARIANTS, validate_source
 
 
 class RouteForm(forms.ModelForm):
@@ -25,6 +26,8 @@ class RouteForm(forms.ModelForm):
             run__source_id=self.instance.source_id, sheet="Ruta", row=self.instance.source_row, resolved=False
         ).exists():
             self.add_error("status", "Resuelva las incidencias de origen antes de activar esta ruta.")
+        if data.get("status") == Route.ACTIVE and self.instance.source_id and not self.instance.source.print_approved:
+            self.add_error("status", "Valide primero el formato de impresión de este libro de origen.")
         return data
 
 
@@ -85,6 +88,11 @@ ScheduleLineFormSet = inlineformset_factory(
 
 
 class ImportForm(forms.Form):
+    client_name = forms.ChoiceField(label="Cliente", choices=[(name, name) for name in CLIENT_VARIANTS],
+                                    initial="DAIKIN", widget=forms.Select(attrs={"data-import-client": ""}))
+    classification = forms.ChoiceField(label="Origen", choices=[(name, name) for name in
+        ("Headers", "Individuales", "SLP Headers", "SLP Individuales", "General")],
+        initial="Headers", widget=forms.Select(attrs={"data-import-variant": ""}))
     file = forms.FileField(label="Archivo XLSM")
     password = forms.CharField(label="Contraseña de apertura", required=False, widget=forms.PasswordInput(render_value=False))
     dry_run = forms.BooleanField(label="Solo simular", initial=True, required=False)
@@ -96,3 +104,12 @@ class ImportForm(forms.Form):
         if file.size > 30 * 1024 * 1024:
             raise forms.ValidationError("El límite es 30 MB.")
         return file
+
+    def clean(self):
+        data = super().clean()
+        if data.get("client_name") and data.get("classification"):
+            try:
+                validate_source(data["client_name"], data["classification"])
+            except ValueError as exc:
+                self.add_error("classification", str(exc))
+        return data

@@ -35,30 +35,89 @@ document.addEventListener('change', event => {
   document.querySelectorAll('[data-route-checkbox]').forEach(box => { box.checked = event.target.checked; });
 });
 
+const importClient = document.querySelector('[data-import-client]');
+const importVariant = document.querySelector('[data-import-variant]');
+const sourceVariants = document.getElementById('source-variants');
+if (importClient && importVariant && sourceVariants) {
+  const variantsByClient = JSON.parse(sourceVariants.textContent);
+  const filterVariants = () => {
+    const allowed = variantsByClient[importClient.value] || [];
+    for (const option of importVariant.options) {
+      option.hidden = !allowed.includes(option.value);
+      option.disabled = option.hidden;
+    }
+    if (!allowed.includes(importVariant.value)) importVariant.value = allowed[0] || '';
+  };
+  importClient.addEventListener('change', filterVariants);
+  filterVariants();
+}
+
 const batchRows = document.querySelector('[data-order-rows]');
 const batchTemplate = document.querySelector('[data-order-template]');
 const batchCount = document.querySelector('[data-row-count]');
 const batchReSource = document.getElementById('batch-re-map');
-const batchReMap = batchReSource ? JSON.parse(batchReSource.textContent) : {};
+let batchReMap = batchReSource ? JSON.parse(batchReSource.textContent) : {};
+const routeCatalogSource = document.getElementById('batch-route-catalog');
+const routeCatalog = routeCatalogSource ? JSON.parse(routeCatalogSource.textContent) : {};
+const orderCatalogSource = document.getElementById('batch-order-catalog');
+const orderCatalog = orderCatalogSource ? JSON.parse(orderCatalogSource.textContent) : {};
+const batchClient = document.querySelector('[data-batch-client]');
+const batchVariant = document.querySelector('[data-batch-variant]');
+const parentCodeOptions = document.getElementById('parent-code-options');
 const shopOrderOptions = document.getElementById('shop-order-options');
-const knownShopOrders = new Set([...(shopOrderOptions?.options || [])].map(option => option.value.toLocaleLowerCase()));
+const knownShopOrders = Object.fromEntries(Object.entries(orderCatalog).map(([client, orders]) => [client, new Set(orders)]));
 const batchForm = document.querySelector('[data-batch-form]');
 const commonFields = [...document.querySelectorAll('[data-common-field]')];
+let currentBatchClient = batchClient?.value || 'DAIKIN';
 if (batchForm && commonFields.length) {
-  const key = `edh.batch.common.v1.${batchForm.dataset.user}`;
-  let saved = {};
-  try { saved = JSON.parse(localStorage.getItem(key) || '{}'); } catch (_) { saved = {}; }
-  for (const input of commonFields) {
-    if (input.value.trim()) saved[input.dataset.commonField] = input.value;
-    else input.value = saved[input.dataset.commonField] || '';
-  }
-  const saveCommon = () => {
+  const key = client => `edh.batch.common.v2.${batchForm.dataset.user}.${client}`;
+  const saveCommon = (client = currentBatchClient) => {
     const values = Object.fromEntries(commonFields.map(input => [input.dataset.commonField, input.value]));
-    try { localStorage.setItem(key, JSON.stringify(values)); } catch (_) { /* Storage may be disabled. */ }
+    try { localStorage.setItem(key(client), JSON.stringify(values)); } catch (_) { /* Storage may be disabled. */ }
   };
-  commonFields.forEach(input => input.addEventListener('input', saveCommon));
-  saveCommon();
+  const loadCommon = (client, useRenderedValues = false) => {
+    let saved = {};
+    try {
+      const legacy = client === 'DAIKIN' ? localStorage.getItem(`edh.batch.common.v1.${batchForm.dataset.user}`) : null;
+      saved = JSON.parse(localStorage.getItem(key(client)) || legacy || '{}');
+    } catch (_) { saved = {}; }
+    for (const input of commonFields) {
+      if (useRenderedValues && input.value.trim()) saved[input.dataset.commonField] = input.value;
+      input.value = saved[input.dataset.commonField] || '';
+    }
+    saveCommon(client);
+  };
+  commonFields.forEach(input => input.addEventListener('input', () => saveCommon()));
+  loadCommon(currentBatchClient, true);
+  batchClient?.addEventListener('change', () => {
+    saveCommon(currentBatchClient);
+    currentBatchClient = batchClient.value;
+    loadCommon(currentBatchClient);
+    refreshBatchVariants();
+    refreshBatchSuggestions();
+  });
 }
+
+function refreshBatchVariants() {
+  if (!batchVariant) return;
+  const variants = Object.keys(routeCatalog[currentBatchClient] || {}).filter(Boolean).sort();
+  batchVariant.replaceChildren(new Option('Seleccionar si hay duplicados', ''),
+    ...variants.map(variant => new Option(variant, variant)));
+  batchVariant.value = variants[0] || '';
+}
+
+function refreshBatchSuggestions() {
+  if (!batchVariant || !parentCodeOptions || !shopOrderOptions) return;
+  const variants = routeCatalog[currentBatchClient] || {};
+  const selected = batchVariant.value ? [variants[''] || {}, variants[batchVariant.value] || {}] : Object.values(variants);
+  const routes = Object.assign({}, ...selected);
+  batchReMap = Object.fromEntries(Object.entries(routes).map(([code, count]) => [code.toUpperCase(), count]));
+  parentCodeOptions.replaceChildren(...Object.keys(routes).sort().map(code => new Option('', code)));
+  const orders = knownShopOrders[currentBatchClient] || new Set();
+  shopOrderOptions.replaceChildren(...[...orders].sort().map(order => new Option('', order)));
+  batchRows?.querySelectorAll('[data-parent-code]').forEach(updateBatchRe);
+}
+batchVariant?.addEventListener('change', refreshBatchSuggestions);
 
 function addOrderRow() {
   if (!batchRows || !batchTemplate || Number(batchCount.value) >= 200) return null;
@@ -70,15 +129,18 @@ function addOrderRow() {
 }
 
 function updateBatchRe(input) {
+  if (!input) return;
   const re = input.closest('tr')?.querySelector('[data-re]');
   if (re) re.value = batchReMap[input.value.trim().toUpperCase()] ?? '';
 }
 
 function rememberShopOrder(input) {
   const value = input?.value.trim();
-  if (!value || !shopOrderOptions || knownShopOrders.has(value.toLocaleLowerCase())) return;
+  if (!value || !shopOrderOptions) return;
+  const known = knownShopOrders[currentBatchClient] ||= new Set();
+  if ([...known].some(order => order.toLocaleLowerCase() === value.toLocaleLowerCase())) return;
   shopOrderOptions.append(new Option('', value));
-  knownShopOrders.add(value.toLocaleLowerCase());
+  known.add(value);
 }
 
 document.querySelector('[data-add-order-row]')?.addEventListener('click', () => addOrderRow()?.querySelector('input')?.focus());

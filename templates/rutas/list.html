@@ -5,15 +5,16 @@
   <div><p class="eyebrow">CATÁLOGO CENTRAL</p><h1>Rutas de proceso</h1><p class="muted">Consulta piezas, revisiones y operaciones desde un solo lugar.</p></div>
   {% if perms.rutas.add_route %}<a class="button primary" href="{% url 'rutas:create' %}">＋ Nueva ruta</a>{% endif %}
 </div>
-{% if perms.rutas.add_schedule %}<section class="card batch-panel"><div><p class="eyebrow">IMPRESIÓN POR LOTE</p><h2>Seleccionar órdenes como en Excel</h2><p class="muted">Carga la plantilla o llena celdas con SHOP ORDER, ITEM PADRE, CANTIDAD, SEMANA, RE, Secuencia, LINEA, PLANNER y RESPONSABLE. La selección no se guarda.</p></div><a class="button primary" href="{% url 'rutas:batch_print' %}">Abrir tabla de órdenes</a></section>{% endif %}
+{% if perms.rutas.add_schedule %}<section class="card batch-panel"><div><p class="eyebrow">IMPRESIÓN POR LOTE</p><h2>Seleccionar órdenes como en Excel</h2><p class="muted">Carga la plantilla o llena celdas con SHOP ORDER, ITEM PADRE, CANTIDAD, SEMANA, RE y Secuencia. La selección no se guarda.</p></div><a class="button primary" href="{% url 'rutas:batch_print' %}{% if client_name %}?client={{ client_name|urlencode }}{% endif %}">Abrir tabla de órdenes</a></section>{% endif %}
 <form class="filter-panel" method="get">
   <div class="search-field"><span aria-hidden="true">⌕</span><input aria-label="Buscar rutas" type="search" name="q" value="{{ query }}" placeholder="Buscar por parte, descripción o dibujo"></div>
+  <select name="client" aria-label="Cliente"><option value="">Todos los clientes</option>{% for client in clients %}<option value="{{ client.name }}" {% if client_name == client.name %}selected{% endif %}>{{ client.name }}</option>{% endfor %}</select>
   <select name="status" aria-label="Estado"><option value="">Todos los estados</option><option value="active" {% if status == 'active' %}selected{% endif %}>Activas</option><option value="review" {% if status == 'review' %}selected{% endif %}>Por revisar</option><option value="archived" {% if status == 'archived' %}selected{% endif %}>Archivadas</option></select>
   <select name="classification" aria-label="Origen"><option value="">Todos los orígenes</option>{% for item in classifications %}<option value="{{ item }}" {% if classification == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select>
   <button class="button secondary">Buscar</button>
 </form>
 <form method="post" action="{% url 'rutas:select' %}">
-  {% csrf_token %}<input type="hidden" name="q" value="{{ query }}"><input type="hidden" name="status" value="{{ status }}"><input type="hidden" name="classification" value="{{ classification }}">
+  {% csrf_token %}<input type="hidden" name="q" value="{{ query }}"><input type="hidden" name="client" value="{{ client_name }}"><input type="hidden" name="status" value="{{ status }}"><input type="hidden" name="classification" value="{{ classification }}">
   <div class="table-card">
     <div class="table-caption"><strong>{{ page.paginator.count }} rutas</strong><span>Mostrando {{ page.start_index }}–{{ page.end_index }}</span></div>
     <div class="table-scroll"><table><thead><tr>{% if perms.rutas.add_schedule %}<th><input type="checkbox" aria-label="Seleccionar rutas activas de esta página" data-select-page></th>{% endif %}<th>Parte</th><th>Descripción</th><th>Origen</th><th>Revisión</th><th>Estado</th><th>Impresión</th><th></th></tr></thead><tbody>
@@ -23,5 +24,5 @@
   </div>
   {% if perms.rutas.add_schedule %}<div class="selection-actions"><span>También puedes marcar rutas activas para precargarlas en la tabla temporal.</span><div class="actions"><button class="button secondary" name="scope" value="page">Llevar seleccionadas a la tabla</button><button class="button primary" name="scope" value="all">Llevar todas las del filtro</button></div></div>{% endif %}
 </form>
-{% if page.paginator.num_pages > 1 %}<nav class="pagination" aria-label="Páginas">{% if page.has_previous %}<a href="?q={{ query|urlencode }}&status={{ status }}&classification={{ classification|urlencode }}&page={{ page.previous_page_number }}">← Anterior</a>{% endif %}<span>Página {{ page.number }} de {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?q={{ query|urlencode }}&status={{ status }}&classification={{ classification|urlencode }}&page={{ page.next_page_number }}">Siguiente →</a>{% endif %}</nav>{% endif %}
+{% if page.paginator.num_pages > 1 %}<nav class="pagination" aria-label="Páginas">{% if page.has_previous %}<a href="?q={{ query|urlencode }}&client={{ client_name|urlencode }}&status={{ status }}&classification={{ classification|urlencode }}&page={{ page.previous_page_number }}">← Anterior</a>{% endif %}<span>Página {{ page.number }} de {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?q={{ query|urlencode }}&client={{ client_name|urlencode }}&status={{ status }}&classification={{ classification|urlencode }}&page={{ page.next_page_number }}">Siguiente →</a>{% endif %}</nav>{% endif %}
 {% endblock %}

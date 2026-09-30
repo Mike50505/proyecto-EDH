@@ -12,6 +12,8 @@ class Client(models.Model):
 
 
 class SourceBook(models.Model):
+    client = models.ForeignKey(Client, null=True, blank=True, on_delete=models.PROTECT)
+    print_approved = models.BooleanField(default=False)
     filename = models.CharField(max_length=255)
     sha256 = models.CharField(max_length=64, unique=True)
     classification = models.CharField(max_length=32)

@@ -10,6 +10,13 @@ class RouteAdmin(admin.ModelAdmin):
     readonly_fields = ("source", "source_sheet", "source_row", "source_code", "source_values", "version")
 
 
+@admin.register(SourceBook)
+class SourceBookAdmin(admin.ModelAdmin):
+    list_display = ("filename", "client", "classification", "print_approved", "imported_at")
+    list_filter = ("client", "classification", "print_approved")
+    readonly_fields = ("filename", "client", "classification", "sha256", "imported_at")
+
+
 @admin.register(Part)
 class PartAdmin(admin.ModelAdmin):
     list_display = ("code", "client", "part_type", "source", "source_row", "needs_review")
@@ -17,5 +24,5 @@ class PartAdmin(admin.ModelAdmin):
     list_filter = ("client", "part_type", "needs_review")
 
 
-for model in (BOMItem, Client, ImportIssue, ImportRun, IssuedDocument, Operation, RouteChange, Schedule, ScheduleLine, SourceBook):
+for model in (BOMItem, Client, ImportIssue, ImportRun, IssuedDocument, Operation, RouteChange, Schedule, ScheduleLine):
     admin.site.register(model)

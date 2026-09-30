@@ -10,6 +10,7 @@ from django.db import transaction
 from openpyxl import load_workbook
 
 from rutas.models import BOMItem, Client, ImportIssue, ImportRun, Operation, Part, Route, SourceBook
+from rutas.services.source_catalog import validate_source
 
 
 class ImportErrorDetailed(Exception):
@@ -26,6 +27,8 @@ def raw(value):
 
 def classify(filename):
     name = filename.lower()
+    if "lennox" in name:
+        return "General"
     if "slp" in name and "header" in name:
         return "SLP Headers"
     if "slp" in name and "individual" in name:
@@ -71,14 +74,19 @@ def workbook_from_upload(upload, password=None):
     return digest.hexdigest(), source, values, formulas
 
 
-def scan(upload, password=None):
+def scan(upload, password=None, client_name=None, classification=None):
     digest, stream, wb, fw = workbook_from_upload(upload, password)
     try:
         required = {"Familias", "Ruta", "Datos"}
         if not required.issubset(set(wb.sheetnames)):
             raise ImportErrorDetailed("Faltan hojas requeridas: " + ", ".join(sorted(required - set(wb.sheetnames))))
-        classification = classify(upload.name)
-        client_name = clean(wb["Datos"]["G2"].value) or "DAIKIN"
+        classification = classification or classify(upload.name)
+        source_client = clean(wb["Datos"]["G2"].value)
+        client_name = client_name or source_client or "DAIKIN"
+        try:
+            validate_source(client_name, classification)
+        except ValueError as exc:
+            raise ImportErrorDetailed(str(exc)) from exc
         families = []
         current_parent = None
         value_rows = wb["Familias"].iter_rows(min_row=2, max_row=5000, min_col=1, max_col=12, values_only=True)
@@ -92,9 +100,9 @@ def scan(upload, password=None):
                     "wall": raw(row[8]), "development": raw(row[9]), "comments": raw(row[10]), "phase": raw(row[11]),
                     "formula": raw(formula_row[9].value) if formula_row[9].data_type == "f" else "",
                     "source_values": [raw(v) for v in row]}
-            if "Headers" in classification and item["type"] == "FP":
+            if classification in ("Headers", "SLP Headers", "General") and item["type"] == "FP":
                 current_parent = n
-            item["parent_row"] = current_parent if "Headers" in classification and current_parent != n else None
+            item["parent_row"] = current_parent if classification in ("Headers", "SLP Headers", "General") and current_parent != n else None
             families.append(item)
         header = next(fw["Ruta"].iter_rows(min_row=1, max_row=1, min_col=1, max_col=133, values_only=True))
         names = [clean(header[col - 1]) for col in range(2, 134, 4)]
@@ -116,7 +124,8 @@ def scan(upload, password=None):
                                    "tooling": raw(values[1]), "inspection": raw(values[2]), "machine": raw(values[3]), "group": group + 1})
             operations.sort(key=lambda op: (int(clean(op["sequence"])) if clean(op["sequence"]).isdigit() else 999999, op["group"]))
             routes.append({"row": n, "code": code, "original_code": original_code, "operations": operations})
-        return {"sha256": digest, "classification": classification, "client": client_name, "families": families, "routes": routes,
+        return {"sha256": digest, "classification": classification, "client": client_name, "source_client": source_client,
+                "families": families, "routes": routes,
                 "sheets": wb.sheetnames, "process_groups": names}
     finally:
         wb.close()
@@ -124,16 +133,26 @@ def scan(upload, password=None):
         stream.close()
 
 
-def import_workbook(upload, password=None, dry_run=True, user=None):
+def import_workbook(upload, password=None, dry_run=True, user=None, client_name=None, classification=None):
     if not upload.name.lower().endswith(".xlsm"):
         raise ImportErrorDetailed("Solo se aceptan archivos .xlsm.")
     if getattr(upload, "size", 0) > 30 * 1024 * 1024:
         raise ImportErrorDetailed("El archivo supera el límite de 30 MB.")
-    data = scan(upload, password)
+    data = scan(upload, password, client_name, classification)
     conflicts = []
+    if data["source_client"] and data["source_client"].casefold() != data["client"].casefold():
+        conflicts.append(("Datos", 2, "", "cliente_distinto",
+                          f"Datos!G2 dice {data['source_client']}; se usó el cliente seleccionado {data['client']}."))
     by_code = defaultdict(list)
+    family_counts = Counter(item["code"] for item in data["families"])
     for route in data["routes"]:
         by_code[route["code"]].append(route)
+        if family_counts[route["code"]] == 0:
+            conflicts.append(("Ruta", route["row"], route["code"], "pieza_sin_familia",
+                              "No existe una pieza con este código en Familias del mismo libro."))
+        elif family_counts[route["code"]] > 1:
+            conflicts.append(("Ruta", route["row"], route["code"], "pieza_ambigua",
+                              "Hay varias piezas con este código en Familias del mismo libro."))
         sequences = [clean(op["sequence"]) for op in route["operations"] if clean(op["sequence"])]
         for seq, count in Counter(sequences).items():
             if count > 1:
@@ -154,16 +173,20 @@ def import_workbook(upload, password=None, dry_run=True, user=None):
                "classification": data["classification"], "client": data["client"], "sha256": data["sha256"], "dry_run": dry_run}
     with transaction.atomic():
         existing = SourceBook.objects.filter(sha256=data["sha256"]).first()
+        if existing and (existing.classification != data["classification"] or
+                         (existing.client_id and existing.client.name != data["client"])):
+            raise ImportErrorDetailed("Este libro ya fue importado con otro cliente u origen.")
         if existing and not dry_run:
             summary["already_imported"] = True
         run = ImportRun.objects.create(source=existing, filename=upload.name[:255], sha256=data["sha256"], dry_run=dry_run, created_by=user, summary=summary)
-        ImportIssue.objects.bulk_create([ImportIssue(run=run, sheet=s, row=r, code=c, kind=k, detail=d) for s, r, c, k, d in conflicts])
+        if dry_run or not existing:
+            ImportIssue.objects.bulk_create([ImportIssue(run=run, sheet=s, row=r, code=c, kind=k, detail=d) for s, r, c, k, d in conflicts])
         if dry_run or existing:
             return run
-        source = SourceBook.objects.create(filename=upload.name[:255], sha256=data["sha256"], classification=data["classification"])
+        client, _ = Client.objects.get_or_create(name=data["client"])
+        source = SourceBook.objects.create(client=client, filename=upload.name[:255], sha256=data["sha256"], classification=data["classification"])
         run.source = source
         run.save(update_fields=["source"])
-        client, _ = Client.objects.get_or_create(name=data["client"])
         parts_by_row = {}
         parts_by_code = defaultdict(list)
         for item in data["families"]:
@@ -186,7 +209,7 @@ def import_workbook(upload, password=None, dry_run=True, user=None):
         conflicted = {(r, c) for s, r, c, k, d in conflicts if s == "Ruta"}
         for item in data["routes"]:
             matching = parts_by_code[item["code"]]
-            review = (item["row"], item["code"]) in conflicted or len(matching) != 1
+            review = not source.print_approved or (item["row"], item["code"]) in conflicted or len(matching) != 1
             route = Route.objects.create(client=client, part=matching[0] if len(matching) == 1 else None,
                 code=item["code"], description=matching[0].description if len(matching) == 1 else "",
                 classification=data["classification"], status=Route.REVIEW if review else Route.ACTIVE,

@@ -11,8 +11,11 @@
 <form method="post" enctype="multipart/form-data" data-batch-form data-user="{{ request.user.pk }}">
   {% csrf_token %}
   <section class="card batch-toolbar">
+    <label>Cliente
+      <select name="client" data-batch-client>{% for client in clients %}<option value="{{ client.name }}" {% if client_name == client.name %}selected{% endif %}>{{ client.name }}</option>{% endfor %}</select>
+    </label>
     <label>Origen de las rutas
-      <select name="classification"><option value="">Seleccionar si hay duplicados</option>{% for item in classifications %}<option value="{{ item }}" {% if classification == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select>
+      <select name="classification" data-batch-variant><option value="">Seleccionar si hay duplicados</option>{% for item in classifications %}<option value="{{ item }}" {% if classification == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select>
     </label>
     <label>Archivo Excel (.xlsx o .xlsm)
       <input type="file" name="workbook" accept=".xlsx,.xlsm">
@@ -52,4 +55,6 @@
   <div class="batch-actions"><button type="button" class="button secondary" data-add-order-row>＋ Agregar fila</button><span class="muted">La tabla solo contiene datos de cada orden. Las órdenes no se guardan.</span>{% if perms.rutas.add_issueddocument %}<button class="button primary" name="action" value="print">Crear PDF de las órdenes</button>{% endif %}</div>
 </form>
 {{ re_map|json_script:"batch-re-map" }}
+{{ route_catalog|json_script:"batch-route-catalog" }}
+{{ order_catalog|json_script:"batch-order-catalog" }}
 {% endblock %}

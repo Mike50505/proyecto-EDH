@@ -69,7 +69,7 @@ def rows_from_post(post):
     return rows
 
 
-def build_pdf(rows, classification):
+def build_pdf(rows, classification, client_name="DAIKIN"):
     """Validate against approved routes and render entirely in memory."""
     first = rows[0]
     defaults = {key: first.get(key, "") for key in ("week", "line", "planner", "responsible")}
@@ -107,7 +107,8 @@ def build_pdf(rows, classification):
             continue
         if not row.get("parent_code"):
             continue
-        routes = Route.objects.filter(code__iexact=row["parent_code"]).exclude(status=Route.ARCHIVED).select_related("client", "part", "source")
+        routes = Route.objects.filter(code__iexact=row["parent_code"], client__name=client_name).exclude(
+            status=Route.ARCHIVED).select_related("client", "part", "source")
         if classification:
             routes = routes.filter(classification=classification)
         matches = list(routes.order_by("source_row", "id")[:2])

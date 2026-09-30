@@ -55,11 +55,36 @@ class ImportTests(TestCase):
         import_workbook(example_xlsm(), dry_run=False)
         again = import_workbook(example_xlsm(), dry_run=False)
         self.assertTrue(again.summary["already_imported"])
+        self.assertEqual(again.issues.count(), 0)
         self.assertEqual(Route.objects.count(), 2)
         self.assertEqual(list(Route.objects.values_list("source_row", flat=True).order_by("source_row")), [2, 3])
         self.assertEqual(Route.objects.filter(status=Route.REVIEW).count(), 2)
         self.assertEqual(Route.objects.first().code, "0210A00205")
         self.assertEqual(Route.objects.get(source_row=2).operations.first().name, "DOBLEZ 1")
+
+    def test_selected_client_overrides_misspelled_workbook_cell_and_stays_in_review(self):
+        workbook = example_xlsm()
+        run = import_workbook(workbook, password=None, dry_run=False, client_name="RHEEM", classification="Headers")
+        self.assertEqual(run.source.client.name, "RHEEM")
+        self.assertFalse(run.source.print_approved)
+        self.assertEqual(Route.objects.filter(client__name="RHEEM", status=Route.REVIEW).count(), 2)
+        self.assertTrue(run.issues.filter(kind="cliente_distinto").exists())
+
+    def test_import_rejects_invalid_client_variant_pair(self):
+        with self.assertRaisesRegex(ImportErrorDetailed, "combinación válida"):
+            import_workbook(example_xlsm(), dry_run=True, client_name="LENNOX", classification="Headers")
+
+    def test_issue_list_excludes_dry_run_duplicates(self):
+        simulation = import_workbook(example_xlsm(), dry_run=True)
+        committed = import_workbook(example_xlsm(), dry_run=False)
+        reviewer = get_user_model().objects.create_superuser("revisor", "r@example.test", "example-long-password")
+        self.client.force_login(reviewer)
+        response = self.client.get(reverse("rutas:issues"))
+        self.assertEqual(response.status_code, 200)
+        visible_ids = {issue.pk for issue in response.context["page"]}
+        self.assertTrue(visible_ids)
+        self.assertTrue(visible_ids.issubset(set(committed.issues.values_list("pk", flat=True))))
+        self.assertFalse(visible_ids.intersection(simulation.issues.values_list("pk", flat=True)))
 
 
 class DocumentTests(TestCase):
@@ -100,6 +125,14 @@ class DocumentTests(TestCase):
         self.route.status = Route.REVIEW
         self.route.save()
         with self.assertRaisesRegex(ValueError, "requiere revisión"):
+            issue_schedule(self.schedule, self.user)
+
+    def test_unapproved_source_cannot_be_issued(self):
+        source = SourceBook.objects.create(client=self.client_record, filename="nuevo.xlsm", sha256="a" * 64,
+                                           classification="Headers", print_approved=False)
+        self.route.source = source
+        self.route.save()
+        with self.assertRaisesRegex(ValueError, "formato de impresión"):
             issue_schedule(self.schedule, self.user)
 
     def test_copies_repeat_document_without_changing_piece_quantity(self):
@@ -184,6 +217,27 @@ class DocumentTests(TestCase):
         self.assertContains(response, '<option value="0210A00205"></option>')
         self.assertContains(response, 'list="shop-order-options" data-shop-order autocomplete="off"')
         self.assertContains(response, 'list="parent-code-options" data-parent-code autocomplete="off"')
+
+    def test_client_filter_and_batch_pdf_use_selected_client(self):
+        rheem = Client.objects.create(name="RHEEM")
+        rheem_route = Route.objects.create(client=rheem, code=self.route.code, status=Route.ACTIVE,
+                                           classification="Individuales", description="Ruta RHEEM")
+        Operation.objects.create(route=rheem_route, position=1, name="PERFORACIÓN")
+        self.user.user_permissions.add(Permission.objects.get(codename="add_schedule"),
+                                       Permission.objects.get(codename="add_issueddocument"))
+        self.client.force_login(self.user)
+        page = self.client.get(reverse("rutas:list"), {"client": "RHEEM"})
+        self.assertContains(page, "Ruta RHEEM")
+        self.assertNotContains(page, "Pieza inicial")
+        grid = self.client.get(reverse("rutas:batch_print"), {"client": "RHEEM", "classification": "Individuales"})
+        self.assertContains(grid, 'value="RHEEM" selected')
+        response = self.client.post(reverse("rutas:batch_print"), {"action": "print", "client": "RHEEM",
+            "classification": "Individuales", "row_count": "1", "rows-0-shop_order": "RH-1",
+            "rows-0-parent_code": rheem_route.code, "rows-0-quantity": "1", "rows-0-week": "31A",
+            "rows-0-sequence": "1", "common_line": "RHEEM", "common_planner": "Ana",
+            "common_responsible": "Luis"})
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn("RHEEM", PdfReader(io.BytesIO(b"".join(response.streaming_content))).pages[0].extract_text())
 
     def test_excel_upload_and_grid_print_do_not_save_orders(self):
         second = Route.objects.create(client=self.client_record, code="RM-B", status=Route.ACTIVE)

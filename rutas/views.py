@@ -20,10 +20,12 @@ from rutas.models import Client, ImportIssue, ImportRun, IssuedDocument, Operati
 from rutas.services.documents import issue_schedule, make_label, render_pdf
 from rutas.services.batch_selection import blank_rows, build_pdf, read_excel, rows_from_post
 from rutas.services.importer import ImportErrorDetailed, import_workbook
+from rutas.services.source_catalog import CLIENT_VARIANTS
 
 
 # Values in Datos!A of the original Headers workbook; entered orders remain temporary.
-SOURCE_SHOP_ORDERS = ("RAMOS A", "RAMOS B", "RAMOS C", "RAMOS D", "RAMOS E")
+SOURCE_SHOP_ORDERS = {"DAIKIN": ("RAMOS A", "RAMOS B", "RAMOS C", "RAMOS D", "RAMOS E"),
+                      "LENNOX": ("RA0101",), "RHEEM": ()}
 
 
 def route_data(route):
@@ -43,9 +45,14 @@ def replace_operations(route, formset):
 @login_required
 def route_list(request):
     query = request.GET.get("q", "").strip()
+    client_name = request.GET.get("client", "DAIKIN")
     status = request.GET.get("status", "")
     classification = request.GET.get("classification", "")
+    if client_name and classification and not Route.objects.filter(client__name=client_name, classification=classification).exists():
+        classification = ""
     routes = Route.objects.select_related("client", "part").all()
+    if client_name:
+        routes = routes.filter(client__name=client_name)
     if query:
         routes = routes.filter(Q(code__icontains=query) | Q(description__icontains=query) | Q(part__drawing_number__icontains=query))
     if status in dict(Route.STATUS):
@@ -56,8 +63,11 @@ def route_list(request):
     if ordering not in {"code", "-code", "updated_at", "-updated_at"}:
         ordering = "code"
     page = Paginator(routes.order_by(ordering, "id"), 30).get_page(request.GET.get("page"))
+    classes = Route.objects.filter(client__name=client_name) if client_name else Route.objects.all()
     return render(request, "rutas/list.html", {"page": page, "query": query, "status": status,
-        "classification": classification, "order": ordering, "classifications": Route.objects.order_by("classification").values_list("classification", flat=True).distinct()})
+        "client_name": client_name, "clients": Client.objects.order_by("name"),
+        "classification": classification, "order": ordering,
+        "classifications": classes.order_by("classification").values_list("classification", flat=True).distinct()})
 
 
 @login_required
@@ -65,8 +75,13 @@ def route_list(request):
 @require_POST
 def route_select(request):
     scope = request.POST.get("scope")
+    client_name = request.POST.get("client", "DAIKIN")
     if scope == "all":
+        if not client_name:
+            messages.error(request, "Elige un cliente antes de llevar todas las rutas del filtro.")
+            return redirect("rutas:list")
         routes = Route.objects.filter(status=Route.ACTIVE)
+        routes = routes.filter(client__name=client_name)
         query = request.POST.get("q", "").strip()
         classification = request.POST.get("classification", "")
         status = request.POST.get("status", "")
@@ -100,7 +115,7 @@ def route_select(request):
         rows[index].update(parent_code=route.code, sequence=str(index + 1),
                            re=str(route.part.components.filter(component__part_type="RM").count()) if route.part_id else "0")
     origins = {selected[pk].classification for pk in ids}
-    return render_batch_page(request, rows, [], origins.pop() if len(origins) == 1 else "")
+    return render_batch_page(request, rows, [], origins.pop() if len(origins) == 1 else "", client_name=selected[ids[0]].client.name)
 
 
 @login_required
@@ -137,7 +152,10 @@ def batch_print(request):
     rows = blank_rows()
     errors = []
     notice = ""
-    classification = request.POST.get("classification", "") if request.method == "POST" else "Headers"
+    client_name = request.POST.get("client", "DAIKIN") if request.method == "POST" else request.GET.get("client", "DAIKIN")
+    classification = request.POST.get("classification", "") if request.method == "POST" else request.GET.get("classification", "Headers" if client_name == "DAIKIN" else "")
+    if not Client.objects.filter(name=client_name).exists():
+        errors.append("Selecciona un cliente disponible.")
     if request.method == "POST":
         action = request.POST.get("action")
         try:
@@ -152,7 +170,9 @@ def batch_print(request):
                 if not request.user.has_perm("rutas.add_issueddocument"):
                     raise PermissionDenied
                 rows = rows_from_post(request.POST)
-                pdf = build_pdf(rows, classification)
+                if errors:
+                    raise ValueError("\n".join(errors))
+                pdf = build_pdf(rows, classification, client_name)
                 response = FileResponse(BytesIO(pdf), content_type="application/pdf", as_attachment=False,
                                         filename="ordenes-seleccionadas.pdf")
                 response["Cache-Control"] = "private, no-store"
@@ -173,30 +193,42 @@ def batch_print(request):
                 ] or blank_rows()
                 for field in ("line", "planner", "responsible"):
                     rows[0][field] = request.POST.get(f"common_{field}", "").strip()
-    return render_batch_page(request, rows, errors, classification, notice)
+    return render_batch_page(request, rows, errors, classification, notice, client_name)
 
 
-def render_batch_page(request, rows, errors, classification, notice=""):
-    re_map = {code.upper(): count for code, count in Route.objects.annotate(
+def render_batch_page(request, rows, errors, classification, notice="", client_name="DAIKIN"):
+    route_catalog = {}
+    route_values = Route.objects.exclude(status=Route.ARCHIVED).exclude(code="").annotate(
         rm_count=Count("part__components", filter=Q(part__components__component__part_type="RM"))
-    ).values_list("code", "rm_count")}
-    classifications = Route.objects.exclude(classification="").order_by("classification").values_list("classification", flat=True).distinct()
-    shop_orders = sorted({*SOURCE_SHOP_ORDERS, *ScheduleLine.objects.exclude(shop_order="").values_list("shop_order", flat=True),
-                          *(row.get("shop_order", "").strip() for row in rows)} - {""}, key=str.casefold)
-    parent_codes = Route.objects.exclude(status=Route.ARCHIVED).exclude(code="").order_by("code").values_list("code", flat=True).distinct()
+    ).order_by("source_row", "id").values_list("client__name", "classification", "code", "rm_count")
+    for client, variant, code, count in route_values:
+        route_catalog.setdefault(client, {}).setdefault(variant, {}).setdefault(code, count)
+    order_catalog = {client: set(orders) for client, orders in SOURCE_SHOP_ORDERS.items()}
+    for client, shop_order in ScheduleLine.objects.exclude(shop_order="").values_list("schedule__client__name", "shop_order"):
+        order_catalog.setdefault(client, set()).add(shop_order)
+    order_catalog.setdefault(client_name, set()).update(row.get("shop_order", "").strip() for row in rows)
+    order_catalog = {client: sorted(values - {""}, key=str.casefold) for client, values in order_catalog.items()}
+    client_routes = route_catalog.get(client_name, {})
+    classifications = sorted(variant for variant in client_routes if variant)
+    selected_routes = {code: count for codes in client_routes.values() for code, count in codes.items()} if not classification else {
+        **client_routes.get("", {}), **client_routes.get(classification, {})}
+    parent_codes = sorted(selected_routes, key=str.casefold)
+    re_map = {code.upper(): count for code, count in selected_routes.items()}
+    shop_orders = order_catalog.get(client_name, [])
     warnings = []
     for index, row in enumerate(rows, 1):
         code = row.get("parent_code", "").strip()
         if not code:
             continue
-        candidates = Route.objects.filter(code__iexact=code)
+        candidates = Route.objects.filter(code__iexact=code, client__name=client_name)
         if classification:
             candidates = candidates.filter(classification=classification)
         if candidates.exists() and not candidates.filter(status=Route.ACTIVE).exists():
             warnings.append(f"Fila {index + 1}: {code} está Por revisar. El PDF será una vista previa no aprobada.")
     return render(request, "rutas/batch_print.html", {"rows": rows, "errors": errors, "classification": classification,
-        "classifications": classifications, "shop_orders": shop_orders, "parent_codes": parent_codes,
-        "re_map": re_map, "notice": notice, "warnings": warnings})
+        "classifications": classifications, "client_name": client_name, "clients": Client.objects.order_by("name"),
+        "shop_orders": shop_orders, "parent_codes": parent_codes, "route_catalog": route_catalog,
+        "order_catalog": order_catalog, "re_map": re_map, "notice": notice, "warnings": warnings})
 
 
 @login_required
@@ -356,11 +388,12 @@ def import_page(request):
     run = None
     if request.method == "POST" and form.is_valid():
         try:
-            run = import_workbook(form.cleaned_data["file"], form.cleaned_data["password"], form.cleaned_data["dry_run"], request.user)
+            run = import_workbook(form.cleaned_data["file"], form.cleaned_data["password"], form.cleaned_data["dry_run"],
+                                  request.user, form.cleaned_data["client_name"], form.cleaned_data["classification"])
             messages.success(request, "Simulación terminada." if run.dry_run else "Importación terminada.")
         except ImportErrorDetailed as exc:
             form.add_error("file", str(exc))
-    return render(request, "rutas/import.html", {"form": form, "run": run})
+    return render(request, "rutas/import.html", {"form": form, "run": run, "source_variants": CLIENT_VARIANTS})
 
 
 @login_required
@@ -381,16 +414,21 @@ def import_report(request, pk):
 @permission_required("rutas.view_importissue", raise_exception=True)
 def issue_list(request):
     kind = request.GET.get("kind", "")
-    issues = ImportIssue.objects.filter(resolved=False).select_related("run__source").order_by("run__source__classification", "sheet", "row", "id")
+    client_name = request.GET.get("client", "")
+    issues = ImportIssue.objects.filter(resolved=False, run__dry_run=False).select_related("run__source", "run__source__client")
+    if client_name:
+        issues = issues.filter(Q(run__source__client__name=client_name) | Q(run__summary__client=client_name))
     if kind:
         issues = issues.filter(kind=kind)
+    issues = issues.order_by("run__source__classification", "sheet", "row", "id")
     page = Paginator(issues, 30).get_page(request.GET.get("page"))
     keys = [(issue.run.source_id, issue.row) for issue in page if issue.sheet == "Ruta" and issue.run.source_id]
     linked = {(route.source_id, route.source_row): route for route in Route.objects.filter(source_id__in=[x[0] for x in keys], source_row__in=[x[1] for x in keys])}
     for issue in page:
         issue.linked_route = linked.get((issue.run.source_id, issue.row)) if issue.sheet == "Ruta" else None
-    kinds = ImportIssue.objects.values_list("kind", flat=True).distinct().order_by("kind")
-    return render(request, "rutas/issues.html", {"page": page, "kind": kind, "kinds": kinds})
+    kinds = ImportIssue.objects.filter(run__dry_run=False).values_list("kind", flat=True).distinct().order_by("kind")
+    return render(request, "rutas/issues.html", {"page": page, "kind": kind, "kinds": kinds,
+                                                   "client_name": client_name, "clients": Client.objects.order_by("name")})
 
 
 @login_required
