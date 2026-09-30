@@ -12,7 +12,7 @@ from pypdf import PdfReader
 
 from rutas.forms import ScheduleLineForm
 from rutas.models import BOMItem, Client, ImportIssue, ImportRun, IssuedDocument, Operation, Part, Route, Schedule, ScheduleLine, SourceBook
-from rutas.services.documents import issue_schedule
+from rutas.services.documents import issue_schedule, render_pdf
 from rutas.services.importer import ImportErrorDetailed, import_workbook
 from rutas.services.reconciliation import reconcile_all
 
@@ -141,6 +141,25 @@ class RouteEditorTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(route.operations.count(), 1)
         self.assertEqual(route.operations.first().name, "DOBLEZ")
+
+
+class PdfPaginationTests(TestCase):
+    def test_long_operations_stay_two_labels_per_page(self):
+        operations = [{"position": index, "sequence": str(index), "name": "PERFORACIÓN Y DOBLEZ",
+                       "machine": "MÁQUINA DE PRODUCCIÓN", "tooling": "RODILLOS, MORDAZAS Y GUÍA DE AJUSTE 5/8",
+                       "inspection": "LIBERACIÓN DE PRIMERA PIEZA"} for index in range(1, 11)]
+        labels = [{"parent_code": f"P-{index}", "parent_description": "REFRIGERANT PIPE ASSY (GAS)",
+                   "component_code": f"C-{index}", "component_description": "REFRIGERANT PIPE (GAS)",
+                   "dimensions": {"od": "0.625", "wall": "0.037", "development": "515"},
+                   "shop_order": f"RAMOS {index}", "quantity": "40", "sequence": index,
+                   "label_index": 2, "label_total": 3, "re_count": 2, "classification": "Headers",
+                   "operations": operations} for index in range(1, 13)]
+        snapshot = {"client": "DAIKIN", "week": "31A", "line": "DAIKIN", "planner": "Juanjo",
+                    "responsible": "Edith", "issue_date": "2026-09-30", "ship_date": "", "copies": 1,
+                    "labels": labels, "preview_status": "NO APROBADA"}
+        pages = PdfReader(io.BytesIO(render_pdf(snapshot))).pages
+        self.assertEqual(len(pages), 6)
+        self.assertTrue(all(page.extract_text().count("ETIQUETA DE CORTE") == 2 for page in pages))
 
 
 class DocumentTests(TestCase):
