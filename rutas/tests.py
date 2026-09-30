@@ -60,6 +60,7 @@ class ImportTests(TestCase):
         self.assertEqual(list(Route.objects.values_list("source_row", flat=True).order_by("source_row")), [2, 3])
         self.assertEqual(Route.objects.filter(status=Route.REVIEW).count(), 2)
         self.assertEqual(Route.objects.first().code, "0210A00205")
+        self.assertEqual(Part.objects.get(source_row=2).quantity_raw, "1")
         self.assertEqual(Route.objects.get(source_row=2).operations.first().name, "DOBLEZ 1")
 
     def test_selected_client_overrides_misspelled_workbook_cell_and_stays_in_review(self):
@@ -95,11 +96,16 @@ class RouteEditorTests(TestCase):
         page = self.client.get(reverse("rutas:create"))
         self.assertContains(page, 'data-editor-switch="sheet"')
         self.assertContains(page, 'data-editor-switch="form"')
-        self.assertContains(page, 'data-route-data-editor')
-        self.assertContains(page, 'data-route-data-paste')
-        self.assertEqual(page.content.count(b'name="code"'), 1)
+        self.assertContains(page, 'data-family-editor')
+        self.assertContains(page, 'data-family-paste')
+        self.assertEqual(page.content.count(b'name="family-code"'), 1)
+        self.assertContains(page, "Número dibujo")
         prefix = page.context["formset"].prefix
-        data = {"client": client.pk, "part": "", "code": "R-PRUEBA", "description": "Prueba",
+        data = {"client": client.pk, "family-part_type": "FP", "family-code": "R-PRUEBA",
+                "family-description": "Prueba", "family-bom_revision": "A", "family-drawing_revision": "B",
+                "family-drawing_number": "PL-1", "family-quantity_raw": "3", "family-od_raw": "3/8",
+                "family-wall_raw": "0.028", "family-development_raw": "223*",
+                "family-comments": "Revisar", "family-phase": "CORTE",
                 "classification": "Headers", "revision": "", "status": Route.REVIEW, "editor_mode": "sheet",
                 f"{prefix}-TOTAL_FORMS": "2", f"{prefix}-INITIAL_FORMS": "0",
                 f"{prefix}-MIN_NUM_FORMS": "0", f"{prefix}-MAX_NUM_FORMS": "200"}
@@ -111,10 +117,15 @@ class RouteEditorTests(TestCase):
         response = self.client.post(reverse("rutas:create"), data)
         self.assertEqual(response.status_code, 302)
         route = Route.objects.get(code="R-PRUEBA")
+        self.assertEqual(route.description, "Prueba")
+        self.assertEqual(route.part.client, client)
+        self.assertEqual(route.part.quantity_raw, "3")
+        self.assertEqual(route.part.development_raw, "223*")
+        self.assertIsNone(route.part.source_id)
         self.assertEqual(list(route.operations.values_list("name", flat=True)), ["CORTE", "DOBLEZ"])
         self.assertEqual(route.operations.count(), 2)
 
-        data["code"] = "R-INVALIDA"
+        data["family-code"] = "R-INVALIDA"
         data[f"{prefix}-1-position"] = "1"
         data["editor_mode"] = "form"
         response = self.client.post(reverse("rutas:create"), data)
@@ -122,6 +133,7 @@ class RouteEditorTests(TestCase):
         self.assertContains(response, 'data-editor-mode="form"')
         self.assertFalse(response.context["formset"].is_valid())
         self.assertFalse(Route.objects.filter(code="R-INVALIDA").exists())
+        self.assertFalse(Part.objects.filter(code="R-INVALIDA").exists())
 
     def test_existing_operation_can_be_edited_in_cells(self):
         user = get_user_model().objects.create_superuser("editor", "e@example.test", "example-long-password")

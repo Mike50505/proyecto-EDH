@@ -192,6 +192,7 @@ def import_workbook(upload, password=None, dry_run=True, user=None, client_name=
         for item in data["families"]:
             part = Part.objects.create(client=client, code=item["code"], description=item["description"], part_type=item["type"],
                 bom_revision=item["bom_revision"], drawing_revision=item["drawing_revision"], drawing_number=item["drawing"],
+                quantity_raw=item["quantity_raw"],
                 od_raw=item["od"], wall_raw=item["wall"], development_raw=item["development"], development_formula=item["formula"],
                 comments=item["comments"], phase=item["phase"], source=source, source_row=item["row"],
                 source_values=item["source_values"], needs_review=not item["type"])

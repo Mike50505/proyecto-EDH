@@ -54,6 +54,7 @@ class Part(models.Model):
     bom_revision = models.CharField(max_length=80, blank=True)
     drawing_revision = models.CharField(max_length=80, blank=True)
     drawing_number = models.CharField(max_length=160, blank=True)
+    quantity_raw = models.CharField(max_length=80, blank=True)
     od_raw = models.CharField(max_length=80, blank=True)
     wall_raw = models.CharField(max_length=80, blank=True)
     development_raw = models.CharField(max_length=80, blank=True)

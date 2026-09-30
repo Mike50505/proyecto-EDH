@@ -31,6 +31,38 @@ const routeClient = routeDataEditor?.querySelector('[name="client"]');
 const routePart = routeDataEditor?.querySelector('[name="part"]');
 const routeDataFields = ['client', 'part', 'code', 'description', 'classification', 'revision', 'status'];
 const normalizeRouteValue = value => value.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
+const familyEditor = document.querySelector('[data-family-editor]');
+const familyPaste = familyEditor?.querySelector('[data-family-paste]');
+const familyMessage = familyEditor?.querySelector('[data-family-message]');
+const familyFields = ['part_type', 'bom_revision', 'drawing_revision', 'code', 'description', 'drawing_number',
+  'quantity_raw', 'od_raw', 'wall_raw', 'development_raw', 'comments', 'phase'];
+
+if (familyEditor) {
+  familyEditor.addEventListener('paste', event => {
+    if (familyEditor.dataset.editorMode !== 'sheet') return;
+    const target = event.target.closest('[data-family-paste], .family-cell');
+    if (!target) return;
+    const clipboard = event.clipboardData?.getData('text/plain') || '';
+    if (!clipboard.includes('\t')) return;
+    event.preventDefault();
+    const lines = clipboard.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n');
+    if (lines.length === 2 && normalizeRouteValue(lines[0].split('\t')[0]) === 'tipo') lines.shift();
+    const start = target.hasAttribute('data-family-paste') ? 0 : Number(target.dataset.familyCol);
+    const values = lines.length === 1 ? lines[0].split('\t') : [];
+    if (!values.length || start + values.length > familyFields.length ||
+        (target.hasAttribute('data-family-paste') && values.length !== familyFields.length)) {
+      familyMessage.textContent = 'Pega una fila de 12 columnas de Familias, o selecciona la celda inicial correcta.';
+      familyMessage.classList.add('field-error');
+      return;
+    }
+    values.forEach((value, offset) => {
+      familyEditor.querySelector(`[name="family-${familyFields[start + offset]}"]`).value = value.trim();
+    });
+    familyPaste.value = '';
+    familyMessage.textContent = 'Fila de Familias pegada. Revisa los valores antes de guardar.';
+    familyMessage.classList.remove('field-error');
+  });
+}
 
 function showRouteDataMessage(message, error = false) {
   routeDataMessage.textContent = message;
@@ -98,7 +130,7 @@ if (routeDataEditor) {
     const clipboard = event.clipboardData?.getData('text/plain') || '';
     if (!clipboard.includes('\t')) return;
     event.preventDefault();
-    const lines = clipboard.replace(/\r\n?/g, '\n').trimEnd().split('\n');
+    const lines = clipboard.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n');
     if (lines.length === 2 && normalizeRouteValue(lines[0].split('\t')[0]) === 'cliente') lines.shift();
     if (lines.length !== 1) {
       showRouteDataMessage('Pega una sola fila de datos de ruta a la vez.', true);
@@ -131,7 +163,8 @@ function updateOperationCount() {
 if (operationEditor) {
   document.querySelectorAll('[data-editor-switch]').forEach(button => button.addEventListener('click', () => {
     operationEditor.dataset.editorMode = button.dataset.editorSwitch;
-    routeDataEditor.dataset.editorMode = button.dataset.editorSwitch;
+    if (routeDataEditor) routeDataEditor.dataset.editorMode = button.dataset.editorSwitch;
+    if (familyEditor) familyEditor.dataset.editorMode = button.dataset.editorSwitch;
     operationModeInput.value = button.dataset.editorSwitch;
     document.querySelectorAll('[data-editor-switch]').forEach(item =>
       item.setAttribute('aria-pressed', String(item === button)));

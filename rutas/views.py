@@ -15,7 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from rutas.forms import ImportForm, OperationFormSet, RouteForm, ScheduleForm, ScheduleLineFormSet
+from rutas.forms import FamilyForm, ImportForm, OperationFormSet, RouteForm, ScheduleForm, ScheduleLineFormSet
 from rutas.models import Client, ImportIssue, ImportRun, IssuedDocument, Operation, Route, RouteChange, Schedule, ScheduleLine
 from rutas.services.documents import issue_schedule, make_label, render_pdf
 from rutas.services.batch_selection import blank_rows, build_pdf, read_excel, rows_from_post
@@ -243,16 +243,30 @@ def batch_template(request):
 @permission_required("rutas.add_route", raise_exception=True)
 def route_create(request):
     route = Route(status=Route.REVIEW)
-    form = RouteForm(request.POST or None, instance=route)
+    route_data_post = request.POST.copy() if request.method == "POST" else None
+    if route_data_post is not None:
+        route_data_post["code"] = route_data_post.get("family-code", "").strip()
+        route_data_post["description"] = route_data_post.get("family-description", "").strip()
+        route_data_post["part"] = ""
+    form = RouteForm(route_data_post, instance=route)
+    family_form = FamilyForm(request.POST or None, prefix="family")
     formset = OperationFormSet(request.POST or None, instance=route)
-    if request.method == "POST" and form.is_valid() and formset.is_valid():
+    if request.method == "POST" and all((form.is_valid(), family_form.is_valid(), formset.is_valid())):
         with transaction.atomic():
-            route = form.save()
+            part = family_form.save(commit=False)
+            part.client = form.cleaned_data["client"]
+            part.save()
+            route = form.save(commit=False)
+            route.part = part
+            route.code = part.code
+            route.description = part.description
+            route.save()
             replace_operations(route, formset)
             RouteChange.objects.create(route=route, user=request.user, action="create", after=route_data(route))
         messages.success(request, "Ruta creada.")
         return redirect("rutas:detail", pk=route.pk)
-    return render(request, "rutas/edit.html", {"form": form, "formset": formset, "title": "Nueva ruta"})
+    return render(request, "rutas/edit.html", {"form": form, "family_form": family_form,
+                                               "formset": formset, "title": "Nueva ruta"})
 
 
 @login_required

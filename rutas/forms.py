@@ -15,6 +15,18 @@ class PartSelect(forms.Select):
         return option
 
 
+class FamilyForm(forms.ModelForm):
+    class Meta:
+        model = Part
+        fields = ["part_type", "bom_revision", "drawing_revision", "code", "description", "drawing_number",
+                  "quantity_raw", "od_raw", "wall_raw", "development_raw", "comments", "phase"]
+        labels = {"part_type": "Tipo", "bom_revision": "BOM", "drawing_revision": "Dibujo rev",
+                  "code": "Parte", "description": "Descripción", "drawing_number": "Número dibujo",
+                  "quantity_raw": "Cantidad", "od_raw": "OD", "wall_raw": "Pared",
+                  "development_raw": "Desarrollo", "comments": "Comentario", "phase": "Fase"}
+        widgets = {"description": forms.TextInput(), "comments": forms.TextInput()}
+
+
 class RouteForm(forms.ModelForm):
     version = forms.IntegerField(widget=forms.HiddenInput, required=False)
 

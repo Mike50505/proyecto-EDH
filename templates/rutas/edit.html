@@ -11,8 +11,24 @@
 <form method="post" class="editor" data-route-editor>{% csrf_token %}{{ form.version }}
   <input type="hidden" name="editor_mode" value="{% if request.POST.editor_mode == 'form' %}form{% else %}sheet{% endif %}" data-editor-mode-input>
   {% if form.non_field_errors %}<div class="message error">{{ form.non_field_errors }}</div>{% endif %}
+  {% if family_form %}
+  <section class="card">
+    <h2>Configuración de la ruta</h2>
+    <div class="form-grid route-config-grid">{% for field in form.visible_fields %}{% if field.name == 'client' or field.name == 'classification' or field.name == 'revision' or field.name == 'status' %}<label>{{ field.label }} {{ field }}{% if field.errors %}<span class="field-error">{{ field.errors }}</span>{% endif %}</label>{% endif %}{% endfor %}</div>
+  </section>
+  <section class="card space-top family-editor" data-family-editor data-editor-mode="{% if request.POST.editor_mode == 'form' %}form{% else %}sheet{% endif %}">
+    <div class="section-head"><h2>Datos de Familias</h2><span class="muted">Una fila de la hoja Familias</span></div>
+    <p class="hint" data-family-hint>Las 12 columnas siguen el orden de Familias!A:L. Puedes escribir en las celdas o pegar una fila copiada de Excel.</p>
+    <div class="route-data-paste" data-family-paste-wrap><label for="family-paste">Pegar fila de Familias</label><input id="family-paste" type="text" autocomplete="off" placeholder="Haz clic aquí y pega las 12 celdas" data-family-paste></div>
+    <p class="hint" role="status" aria-live="polite" data-family-message></p>
+    <div class="family-scroll"><div class="family-sheet">
+      <div class="family-head" aria-hidden="true">{% for field in family_form.visible_fields %}<span>{{ field.label }}</span>{% endfor %}</div>
+      <div class="family-grid">{% for field in family_form.visible_fields %}<label class="family-cell" data-family-col="{{ forloop.counter0 }}"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors }}</span>{% endif %}</label>{% endfor %}</div>
+    </div></div>
+  </section>
+  {% else %}
   <section class="card route-data-editor" data-route-data-editor data-editor-mode="{% if request.POST.editor_mode == 'form' %}form{% else %}sheet{% endif %}">
-    <div class="section-head"><h2>Datos de la ruta</h2><span class="muted">Una fila por ruta</span></div>
+    <div class="section-head"><h2>Configuración de la ruta</h2><span class="muted">Cliente, pieza vinculada y estado</span></div>
     <p class="hint" data-route-data-hint>Para pegar desde Excel, copia una fila en este orden: Cliente, Pieza vinculada, Código, Descripción, Origen, Revisión y Estado. La pieza puede quedar vacía.</p>
     <div class="route-data-paste" data-route-data-paste-wrap><label for="route-data-paste">Pegar fila de Excel</label><input id="route-data-paste" type="text" autocomplete="off" placeholder="Haz clic aquí y pega las 7 celdas" data-route-data-paste></div>
     <p class="hint" role="status" aria-live="polite" data-route-data-message></p>
@@ -21,6 +37,7 @@
       <div class="route-data-grid">{% for field in form.visible_fields %}<label class="route-data-cell" data-route-col="{{ forloop.counter0 }}"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors }}</span>{% endif %}</label>{% endfor %}</div>
     </div></div>
   </section>
+  {% endif %}
   <section class="card space-top operation-editor" data-operation-editor data-editor-mode="{% if request.POST.editor_mode == 'form' %}form{% else %}sheet{% endif %}">
     <div class="section-head operation-section-head"><div><h2>Operaciones</h2><p class="muted">Cada fila representa un paso de la ruta.</p></div></div>
     <p class="hint" data-sheet-hint>Puedes pegar filas o columnas copiadas de Excel. Orden de columnas: Posición, Secuencia, Proceso, Máquina, Herramental, Inspección y Eliminar.</p>
