@@ -1,8 +1,18 @@
 from django import forms
 from django.forms import inlineformset_factory
 from django.forms.models import BaseInlineFormSet
-from rutas.models import ImportIssue, Route, Operation, Schedule, ScheduleLine
+from rutas.models import ImportIssue, Route, Operation, Part, Schedule, ScheduleLine
 from rutas.services.source_catalog import CLIENT_VARIANTS, validate_source
+
+
+class PartSelect(forms.Select):
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        part = getattr(value, "instance", None)
+        if part is not None:
+            option["attrs"]["data-client-id"] = str(part.client_id)
+            option["attrs"]["data-part-code"] = part.code
+        return option
 
 
 class RouteForm(forms.ModelForm):
@@ -13,10 +23,15 @@ class RouteForm(forms.ModelForm):
         fields = ["client", "part", "code", "description", "classification", "revision", "status"]
         labels = {"client": "Cliente", "part": "Pieza vinculada", "code": "Código", "description": "Descripción",
                   "classification": "Origen", "revision": "Revisión", "status": "Estado"}
-        widgets = {"description": forms.Textarea(attrs={"rows": 2})}
+        widgets = {"part": PartSelect(), "description": forms.Textarea(attrs={"rows": 2})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["part"].queryset = Part.objects.select_related("source").order_by("client__name", "code", "source_row", "id")
+        self.fields["part"].label_from_instance = lambda part: (
+            f"{part.code} · {part.source.classification if part.source_id else 'Manual'}"
+            f"{f' · fila {part.source_row}' if part.source_row else ''}"
+        )
         if self.instance.pk:
             self.fields["version"].initial = self.instance.version
 

@@ -23,6 +23,97 @@ document.addEventListener('click', event => {
   updateOperationCount();
 });
 
+const routeEditor = document.querySelector('[data-route-editor]');
+const routeDataEditor = document.querySelector('[data-route-data-editor]');
+const routeDataPaste = routeDataEditor?.querySelector('[data-route-data-paste]');
+const routeDataMessage = routeDataEditor?.querySelector('[data-route-data-message]');
+const routeClient = routeDataEditor?.querySelector('[name="client"]');
+const routePart = routeDataEditor?.querySelector('[name="part"]');
+const routeDataFields = ['client', 'part', 'code', 'description', 'classification', 'revision', 'status'];
+const normalizeRouteValue = value => value.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
+
+function showRouteDataMessage(message, error = false) {
+  routeDataMessage.textContent = message;
+  routeDataMessage.classList.toggle('field-error', error);
+  routeDataMessage.classList.toggle('hint', !error);
+}
+
+function filterRouteParts() {
+  if (!routeClient || !routePart) return;
+  for (const option of routePart.options) {
+    if (!option.value) continue;
+    option.hidden = !!routeClient.value && option.dataset.clientId !== routeClient.value;
+    option.disabled = option.hidden;
+  }
+  if (routePart.selectedOptions[0]?.disabled) routePart.value = '';
+}
+
+function pasteRouteData(values, startColumn) {
+  if (startColumn + values.length > routeDataFields.length) {
+    showRouteDataMessage('La fila tiene más columnas que Datos de la ruta.', true);
+    return;
+  }
+  const updates = [];
+  for (const [offset, raw] of values.entries()) {
+    const fieldName = routeDataFields[startColumn + offset];
+    const element = routeDataEditor.querySelector(`[name="${fieldName}"]`);
+    const value = raw.trim();
+    if (fieldName === 'client' || fieldName === 'status') {
+      const match = [...element.options].find(option => option.value &&
+        (normalizeRouteValue(option.value) === normalizeRouteValue(value) ||
+         normalizeRouteValue(option.textContent) === normalizeRouteValue(value)));
+      if (!match) {
+        showRouteDataMessage(`No se encontró ${fieldName === 'client' ? 'el cliente' : 'el estado'} «${value}».`, true);
+        return;
+      }
+      updates.push([element, match.value]);
+    } else if (fieldName === 'part') {
+      const clientUpdate = updates.find(([input]) => input === routeClient);
+      const clientId = clientUpdate ? clientUpdate[1] : routeClient.value;
+      const matches = [...element.options].filter(option => option.value && option.dataset.clientId === clientId &&
+        (normalizeRouteValue(option.dataset.partCode || '') === normalizeRouteValue(value) || option.value === value));
+      if (value && matches.length !== 1) {
+        showRouteDataMessage(matches.length ? `La pieza «${value}» aparece varias veces; selecciónala manualmente.` :
+          `No se encontró la pieza «${value}» para este cliente.`, true);
+        return;
+      }
+      updates.push([element, value ? matches[0].value : '']);
+    } else {
+      updates.push([element, value]);
+    }
+  }
+  updates.forEach(([element, value]) => { element.value = value; });
+  filterRouteParts();
+  routeDataPaste.value = '';
+  showRouteDataMessage('Datos de la ruta pegados. Revisa los valores antes de guardar.');
+}
+
+if (routeDataEditor) {
+  routeClient.addEventListener('change', filterRouteParts);
+  filterRouteParts();
+  routeDataEditor.addEventListener('paste', event => {
+    if (routeDataEditor.dataset.editorMode !== 'sheet') return;
+    const pasteTarget = event.target.closest('[data-route-data-paste], .route-data-cell');
+    if (!pasteTarget) return;
+    const clipboard = event.clipboardData?.getData('text/plain') || '';
+    if (!clipboard.includes('\t')) return;
+    event.preventDefault();
+    const lines = clipboard.replace(/\r\n?/g, '\n').trimEnd().split('\n');
+    if (lines.length === 2 && normalizeRouteValue(lines[0].split('\t')[0]) === 'cliente') lines.shift();
+    if (lines.length !== 1) {
+      showRouteDataMessage('Pega una sola fila de datos de ruta a la vez.', true);
+      return;
+    }
+    const values = lines[0].split('\t');
+    const startColumn = pasteTarget.hasAttribute('data-route-data-paste') ? 0 : Number(pasteTarget.dataset.routeCol);
+    if (pasteTarget.hasAttribute('data-route-data-paste') && values.length !== routeDataFields.length) {
+      showRouteDataMessage('La fila debe contener las 7 columnas indicadas; deja la celda de Pieza vacía si no aplica.', true);
+      return;
+    }
+    pasteRouteData(values, startColumn);
+  });
+}
+
 const operationEditor = document.querySelector('[data-operation-editor]');
 const operationList = operationEditor?.querySelector('[data-formset-list]');
 const operationModeInput = document.querySelector('[data-editor-mode-input]');
@@ -38,10 +129,11 @@ function updateOperationCount() {
 }
 
 if (operationEditor) {
-  operationEditor.querySelectorAll('[data-editor-switch]').forEach(button => button.addEventListener('click', () => {
+  document.querySelectorAll('[data-editor-switch]').forEach(button => button.addEventListener('click', () => {
     operationEditor.dataset.editorMode = button.dataset.editorSwitch;
+    routeDataEditor.dataset.editorMode = button.dataset.editorSwitch;
     operationModeInput.value = button.dataset.editorSwitch;
-    operationEditor.querySelectorAll('[data-editor-switch]').forEach(item =>
+    document.querySelectorAll('[data-editor-switch]').forEach(item =>
       item.setAttribute('aria-pressed', String(item === button)));
   }));
 

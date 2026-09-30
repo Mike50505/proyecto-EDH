@@ -3,21 +3,26 @@
 {% block content %}
 <div class="page-heading">
   <div><p class="eyebrow">CATÁLOGO</p><h1>{{ title }}</h1><p class="muted">Define la ruta y captura sus operaciones en celdas o en formulario.</p></div>
+  <div class="editor-switch" role="group" aria-label="Modo de captura de la ruta">
+    <button type="button" data-editor-switch="sheet" aria-pressed="{% if request.POST.editor_mode == 'form' %}false{% else %}true{% endif %}">Celdas</button>
+    <button type="button" data-editor-switch="form" aria-pressed="{% if request.POST.editor_mode == 'form' %}true{% else %}false{% endif %}">Formulario</button>
+  </div>
 </div>
 <form method="post" class="editor" data-route-editor>{% csrf_token %}{{ form.version }}
   <input type="hidden" name="editor_mode" value="{% if request.POST.editor_mode == 'form' %}form{% else %}sheet{% endif %}" data-editor-mode-input>
   {% if form.non_field_errors %}<div class="message error">{{ form.non_field_errors }}</div>{% endif %}
-  <section class="card">
-    <h2>Datos de la ruta</h2>
-    <div class="form-grid">{% for field in form.visible_fields %}<label>{{ field.label }} {{ field }}{% if field.errors %}<span class="field-error">{{ field.errors }}</span>{% endif %}</label>{% endfor %}</div>
+  <section class="card route-data-editor" data-route-data-editor data-editor-mode="{% if request.POST.editor_mode == 'form' %}form{% else %}sheet{% endif %}">
+    <div class="section-head"><h2>Datos de la ruta</h2><span class="muted">Una fila por ruta</span></div>
+    <p class="hint" data-route-data-hint>Para pegar desde Excel, copia una fila en este orden: Cliente, Pieza vinculada, Código, Descripción, Origen, Revisión y Estado. La pieza puede quedar vacía.</p>
+    <div class="route-data-paste" data-route-data-paste-wrap><label for="route-data-paste">Pegar fila de Excel</label><input id="route-data-paste" type="text" autocomplete="off" placeholder="Haz clic aquí y pega las 7 celdas" data-route-data-paste></div>
+    <p class="hint" role="status" aria-live="polite" data-route-data-message></p>
+    <div class="route-data-scroll"><div class="route-data-sheet">
+      <div class="route-data-head" aria-hidden="true">{% for field in form.visible_fields %}<span>{{ field.label }}</span>{% endfor %}</div>
+      <div class="route-data-grid">{% for field in form.visible_fields %}<label class="route-data-cell" data-route-col="{{ forloop.counter0 }}"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors }}</span>{% endif %}</label>{% endfor %}</div>
+    </div></div>
   </section>
   <section class="card space-top operation-editor" data-operation-editor data-editor-mode="{% if request.POST.editor_mode == 'form' %}form{% else %}sheet{% endif %}">
-    <div class="section-head operation-section-head"><div><h2>Operaciones</h2><p class="muted">Cada fila representa un paso de la ruta.</p></div>
-      <div class="editor-switch" role="group" aria-label="Modo de captura de operaciones">
-        <button type="button" data-editor-switch="sheet" aria-pressed="{% if request.POST.editor_mode == 'form' %}false{% else %}true{% endif %}">Celdas</button>
-        <button type="button" data-editor-switch="form" aria-pressed="{% if request.POST.editor_mode == 'form' %}true{% else %}false{% endif %}">Formulario</button>
-      </div>
-    </div>
+    <div class="section-head operation-section-head"><div><h2>Operaciones</h2><p class="muted">Cada fila representa un paso de la ruta.</p></div></div>
     <p class="hint" data-sheet-hint>Puedes pegar filas o columnas copiadas de Excel. Orden de columnas: Posición, Secuencia, Proceso, Máquina, Herramental, Inspección y Eliminar.</p>
     {{ formset.management_form }}
     {% if formset.non_form_errors %}<div class="message error">{{ formset.non_form_errors }}</div>{% endif %}

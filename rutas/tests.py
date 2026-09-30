@@ -95,6 +95,9 @@ class RouteEditorTests(TestCase):
         page = self.client.get(reverse("rutas:create"))
         self.assertContains(page, 'data-editor-switch="sheet"')
         self.assertContains(page, 'data-editor-switch="form"')
+        self.assertContains(page, 'data-route-data-editor')
+        self.assertContains(page, 'data-route-data-paste')
+        self.assertEqual(page.content.count(b'name="code"'), 1)
         prefix = page.context["formset"].prefix
         data = {"client": client.pk, "part": "", "code": "R-PRUEBA", "description": "Prueba",
                 "classification": "Headers", "revision": "", "status": Route.REVIEW, "editor_mode": "sheet",
@@ -123,14 +126,17 @@ class RouteEditorTests(TestCase):
     def test_existing_operation_can_be_edited_in_cells(self):
         user = get_user_model().objects.create_superuser("editor", "e@example.test", "example-long-password")
         client = Client.objects.create(name="LENNOX")
-        route = Route.objects.create(client=client, code="L-PRUEBA", status=Route.REVIEW)
+        part = Part.objects.create(client=client, code="L-PIEZA")
+        route = Route.objects.create(client=client, part=part, code="L-PRUEBA", status=Route.REVIEW)
         operation = Operation.objects.create(route=route, position=1, source_sequence="1", name="CORTE")
         self.client.force_login(user)
         url = reverse("rutas:edit", args=[route.pk])
         page = self.client.get(url)
         prefix = page.context["formset"].prefix
         self.assertContains(page, f'name="{prefix}-0-id" value="{operation.pk}"')
-        data = {"client": client.pk, "part": "", "code": route.code, "description": "",
+        self.assertContains(page, f'data-client-id="{client.pk}" data-part-code="L-PIEZA"')
+        self.assertContains(page, "L-PIEZA · Manual")
+        data = {"client": client.pk, "part": part.pk, "code": route.code, "description": "",
                 "classification": "General", "revision": "", "status": Route.REVIEW, "version": route.version,
                 "editor_mode": "sheet", f"{prefix}-TOTAL_FORMS": "1", f"{prefix}-INITIAL_FORMS": "1",
                 f"{prefix}-MIN_NUM_FORMS": "0", f"{prefix}-MAX_NUM_FORMS": "200",
