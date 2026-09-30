@@ -1,0 +1,13 @@
+.env
+.venv
+*.xlsm
+media
+staticfiles
+node_modules
+__pycache__
+*.pyc
+.git
+tmp
+output
+docs
+Prompt_*.md

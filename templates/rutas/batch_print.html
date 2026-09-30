@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block breadcrumb %}<a href="{% url 'rutas:list' %}">Rutas</a> <span class="slash">/</span> Selección de órdenes{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><p class="eyebrow">IMPRESIÓN TEMPORAL</p><h1>Seleccionar órdenes</h1><p class="muted">Escribe en la tabla o carga la plantilla de Excel. LINEA, PLANNER y RESPONSABLE se llenan una vez y se recuerdan en este navegador.</p></div>
+  <a class="button secondary" href="{% url 'rutas:batch_template' %}">Descargar plantilla Excel</a>
+</div>
+{% for error in errors %}<div class="message error" role="alert">{{ error }}</div>{% endfor %}
+{% if notice %}<div class="message" role="status">{{ notice }}</div>{% endif %}
+{% for warning in warnings %}<div class="notice" role="status">{{ warning }}</div>{% endfor %}
+<form method="post" enctype="multipart/form-data" data-batch-form data-user="{{ request.user.pk }}">
+  {% csrf_token %}
+  <section class="card batch-toolbar">
+    <label>Origen de las rutas
+      <select name="classification"><option value="">Seleccionar si hay duplicados</option>{% for item in classifications %}<option value="{{ item }}" {% if classification == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select>
+    </label>
+    <label>Archivo Excel (.xlsx o .xlsm)
+      <input type="file" name="workbook" accept=".xlsx,.xlsm">
+    </label>
+    <button class="button secondary" name="action" value="upload">Cargar a la tabla</button>
+  </section>
+  <section class="card batch-common space-top">
+    <div><h2>Datos para todas las rutas</h2><p class="muted">Se recuerdan al salir y volver a entrar desde este navegador.</p></div>
+    <div class="form-grid">
+      <label>LINEA<input name="common_line" value="{{ rows.0.line }}" data-common-field="line" autocomplete="off"></label>
+      <label>PLANNER<input name="common_planner" value="{{ rows.0.planner }}" data-common-field="planner" autocomplete="off"></label>
+      <label>RESPONSABLE<input name="common_responsible" value="{{ rows.0.responsible }}" data-common-field="responsible" autocomplete="off"></label>
+    </div>
+  </section>
+  <datalist id="shop-order-options">{% for order in shop_orders %}<option value="{{ order }}"></option>{% endfor %}</datalist>
+  <datalist id="parent-code-options">{% for code in parent_codes %}<option value="{{ code }}"></option>{% endfor %}</datalist>
+  <div class="sheet-wrap space-top"><div class="sheet-scroll"><table class="order-sheet" aria-label="Órdenes para imprimir">
+    <thead><tr><th>SHOP ORDER</th><th>ITEM PADRE</th><th>CANTIDAD</th><th>SEMANA</th><th>RE</th><th>Secuencia</th></tr></thead>
+    <tbody data-order-rows>{% for row in rows %}<tr>
+      <td><input aria-label="SHOP ORDER fila {{ forloop.counter }}" name="rows-{{ forloop.counter0 }}-shop_order" value="{{ row.shop_order }}" list="shop-order-options" data-shop-order autocomplete="off"></td>
+      <td><input aria-label="ITEM PADRE fila {{ forloop.counter }}" name="rows-{{ forloop.counter0 }}-parent_code" value="{{ row.parent_code }}" list="parent-code-options" data-parent-code autocomplete="off"></td>
+      <td><input aria-label="CANTIDAD fila {{ forloop.counter }}" name="rows-{{ forloop.counter0 }}-quantity" value="{{ row.quantity }}" inputmode="decimal"></td>
+      <td><input aria-label="SEMANA fila {{ forloop.counter }}" name="rows-{{ forloop.counter0 }}-week" value="{{ row.week }}"></td>
+      <td><input aria-label="RE fila {{ forloop.counter }}" name="rows-{{ forloop.counter0 }}-re" value="{{ row.re }}" data-re readonly title="Calculado de los componentes RM"></td>
+      <td><input aria-label="Secuencia fila {{ forloop.counter }}" name="rows-{{ forloop.counter0 }}-sequence" value="{{ row.sequence }}" inputmode="numeric"></td>
+    </tr>{% endfor %}</tbody>
+  </table></div></div>
+  <input type="hidden" name="row_count" value="{{ rows|length }}" data-row-count>
+  <template data-order-template><tr>
+    <td><input name="rows-__index__-shop_order" aria-label="SHOP ORDER fila __number__" list="shop-order-options" data-shop-order autocomplete="off"></td>
+    <td><input name="rows-__index__-parent_code" aria-label="ITEM PADRE fila __number__" list="parent-code-options" data-parent-code autocomplete="off"></td>
+    <td><input name="rows-__index__-quantity" aria-label="CANTIDAD fila __number__" inputmode="decimal"></td>
+    <td><input name="rows-__index__-week" aria-label="SEMANA fila __number__"></td>
+    <td><input name="rows-__index__-re" aria-label="RE fila __number__" data-re readonly title="Calculado de los componentes RM"></td>
+    <td><input name="rows-__index__-sequence" aria-label="Secuencia fila __number__" inputmode="numeric"></td>
+  </tr></template>
+  <div class="batch-actions"><button type="button" class="button secondary" data-add-order-row>＋ Agregar fila</button><span class="muted">La tabla solo contiene datos de cada orden. Las órdenes no se guardan.</span>{% if perms.rutas.add_issueddocument %}<button class="button primary" name="action" value="print">Crear PDF de las órdenes</button>{% endif %}</div>
+</form>
+{{ re_map|json_script:"batch-re-map" }}
+{% endblock %}

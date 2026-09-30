@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block breadcrumb %}<a href="{% url 'rutas:list' %}">Rutas</a> <span class="slash">/</span> Impresión por lote{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><p class="eyebrow">IMPRESIÓN POR LOTE</p><h1>Imprimir varias rutas</h1><p class="muted">Completa los datos de programación. Todas las partidas se incluirán en un solo PDF.</p></div>
+</div>
+<form method="post" class="editor">
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="message error">{{ form.non_field_errors }}</div>{% endif %}
+  <section class="card"><h2>Datos comunes</h2><div class="form-grid">{% for field in form %}<label>{{ field.label }} {{ field }}{{ field.errors }}</label>{% endfor %}</div></section>
+  <section class="card space-top">
+    <div class="section-head"><h2>Rutas a imprimir</h2><span class="muted">RE cuenta componentes RM y se calcula automáticamente.</span></div>
+    {{ formset.management_form }}
+    {% if formset.non_form_errors %}<div class="message error">{{ formset.non_form_errors }}</div>{% endif %}
+    <div data-formset-list data-prefix="{{ formset.prefix }}">
+      {% for line_form in formset %}<div class="operation-form">{{ line_form.id }}<div class="form-grid">{% for field in line_form.visible_fields %}<label>{{ field.label }} {{ field }}{{ field.errors }}</label>{% endfor %}</div></div>{% endfor %}
+    </div>
+    <template data-formset-template="{{ formset.prefix }}"><div class="operation-form">{{ formset.empty_form.id }}<div class="form-grid">{% for field in formset.empty_form.visible_fields %}<label>{{ field.label }} {{ field }}</label>{% endfor %}</div></div></template>
+    <button type="button" class="button secondary" data-add-form="{{ formset.prefix }}">＋ Agregar ruta</button>
+  </section>
+  <div class="footer-actions"><a class="button secondary" href="{% url 'rutas:list' %}">Volver al catálogo</a><button class="button secondary" name="action" value="review">Revisar cantidades</button>{% if perms.rutas.add_issueddocument %}<button class="button primary" name="action" value="print_all">Generar PDF de todas</button>{% endif %}</div>
+</form>
+{{ re_counts|json_script:"route-re-counts" }}
+{% endblock %}
