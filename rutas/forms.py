@@ -11,6 +11,8 @@ class RouteForm(forms.ModelForm):
     class Meta:
         model = Route
         fields = ["client", "part", "code", "description", "classification", "revision", "status"]
+        labels = {"client": "Cliente", "part": "Pieza vinculada", "code": "Código", "description": "Descripción",
+                  "classification": "Origen", "revision": "Revisión", "status": "Estado"}
         widgets = {"description": forms.Textarea(attrs={"rows": 2})}
 
     def __init__(self, *args, **kwargs):
@@ -43,7 +45,10 @@ class OrderedOperationFormSet(BaseInlineFormSet):
 
 OperationFormSet = inlineformset_factory(
     Route, Operation, fields=["position", "source_sequence", "name", "machine", "tooling", "inspection"],
-    extra=1, can_delete=True, formset=OrderedOperationFormSet, widgets={"tooling": forms.TextInput(), "inspection": forms.TextInput(), "machine": forms.TextInput()}
+    extra=1, max_num=200, validate_max=True, can_delete=True, formset=OrderedOperationFormSet,
+    labels={"position": "Posición", "source_sequence": "Secuencia", "name": "Proceso", "machine": "Máquina",
+            "tooling": "Herramental", "inspection": "Inspección"},
+    widgets={"tooling": forms.TextInput(), "inspection": forms.TextInput(), "machine": forms.TextInput()}
 )
 
 

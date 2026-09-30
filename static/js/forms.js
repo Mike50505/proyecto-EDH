@@ -1,11 +1,8 @@
-document.addEventListener('click', event => {
-  const button = event.target.closest('[data-add-form]');
-  if (!button) return;
-  const prefix = button.dataset.addForm;
+function appendForm(prefix) {
   const total = document.getElementById(`id_${prefix}-TOTAL_FORMS`);
   const template = document.querySelector(`template[data-formset-template="${prefix}"]`);
   const list = document.querySelector(`[data-formset-list][data-prefix="${prefix}"]`);
-  if (!total || !template || !list) return;
+  if (!total || !template || !list) return null;
   const index = Number(total.value);
   const fragment = template.content.cloneNode(true);
   fragment.querySelectorAll('[name], [id], [for]').forEach(element => {
@@ -13,9 +10,90 @@ document.addEventListener('click', event => {
       if (element.hasAttribute(attribute)) element.setAttribute(attribute, element.getAttribute(attribute).replaceAll('__prefix__', String(index)));
     }
   });
+  const row = fragment.firstElementChild;
   list.append(fragment);
   total.value = index + 1;
+  return row;
+}
+
+document.addEventListener('click', event => {
+  const button = event.target.closest('[data-add-form]');
+  if (!button) return;
+  appendForm(button.dataset.addForm);
+  updateOperationCount();
 });
+
+const operationEditor = document.querySelector('[data-operation-editor]');
+const operationList = operationEditor?.querySelector('[data-formset-list]');
+const operationModeInput = document.querySelector('[data-editor-mode-input]');
+const operationMessage = operationEditor?.querySelector('[data-operation-message]');
+const operationColumns = ['position', 'source_sequence', 'name', 'machine', 'tooling', 'inspection', 'DELETE'];
+
+function updateOperationCount() {
+  if (!operationEditor) return;
+  const count = [...operationList.querySelectorAll('[data-operation-row]')].filter(row =>
+    row.querySelector('input[name$="-name"]')?.value.trim() && !row.querySelector('input[name$="-DELETE"]')?.checked
+  ).length;
+  operationEditor.querySelector('[data-operation-count]').textContent = `${count} ${count === 1 ? 'operación' : 'operaciones'} capturadas`;
+}
+
+if (operationEditor) {
+  operationEditor.querySelectorAll('[data-editor-switch]').forEach(button => button.addEventListener('click', () => {
+    operationEditor.dataset.editorMode = button.dataset.editorSwitch;
+    operationModeInput.value = button.dataset.editorSwitch;
+    operationEditor.querySelectorAll('[data-editor-switch]').forEach(item =>
+      item.setAttribute('aria-pressed', String(item === button)));
+  }));
+
+  operationEditor.addEventListener('input', event => {
+    if (event.target.matches('input[name$="-name"]') && event.target.value.trim()) {
+      const row = event.target.closest('[data-operation-row]');
+      const position = row.querySelector('input[name$="-position"]');
+      const sequence = row.querySelector('input[name$="-source_sequence"]');
+      const rowNumber = [...operationList.querySelectorAll('[data-operation-row]')].indexOf(row) + 1;
+      if (!position.value) position.value = String(rowNumber);
+      if (!sequence.value) sequence.value = position.value;
+    }
+    updateOperationCount();
+  });
+  operationEditor.addEventListener('change', updateOperationCount);
+  operationEditor.addEventListener('paste', event => {
+    if (operationEditor.dataset.editorMode !== 'sheet' || !event.target.matches('.operation-cell input')) return;
+    const clipboard = event.clipboardData?.getData('text/plain') || '';
+    if (!/[\t\r\n]/.test(clipboard)) return;
+    event.preventDefault();
+    const startRow = event.target.closest('[data-operation-row]');
+    const startColumn = Number(event.target.closest('[data-op-col]').dataset.opCol);
+    const startIndex = [...operationList.querySelectorAll('[data-operation-row]')].indexOf(startRow);
+    const lines = clipboard.replace(/\r\n?/g, '\n').replace(/\n$/, '').split('\n');
+    const cells = lines.map(line => line.split('\t'));
+    if (startIndex + cells.length > 200 || cells.some(row => startColumn + row.length > operationColumns.length)) {
+      operationMessage.textContent = 'El pegado supera 200 operaciones o las columnas disponibles. Selecciona la celda inicial correcta.';
+      return;
+    }
+    while (operationList.querySelectorAll('[data-operation-row]').length < startIndex + cells.length) {
+      appendForm(operationList.dataset.prefix);
+    }
+    const rows = operationList.querySelectorAll('[data-operation-row]');
+    cells.forEach((line, rowOffset) => line.forEach((value, columnOffset) => {
+      const input = rows[startIndex + rowOffset].querySelector(`[name$="-${operationColumns[startColumn + columnOffset]}"]`);
+      if (!input) return;
+      if (input.type === 'checkbox') input.checked = ['1', 'sí', 'si', 'true', 'x'].includes(value.trim().toLowerCase());
+      else input.value = value.trim();
+    }));
+    rows.forEach((row, index) => {
+      const name = row.querySelector('input[name$="-name"]');
+      if (!name?.value.trim()) return;
+      const position = row.querySelector('input[name$="-position"]');
+      const sequence = row.querySelector('input[name$="-source_sequence"]');
+      if (!position.value) position.value = String(index + 1);
+      if (!sequence.value) sequence.value = position.value;
+    });
+    operationMessage.textContent = '';
+    updateOperationCount();
+  });
+  updateOperationCount();
+}
 
 function updateReCount(routeSelect) {
   const source = document.getElementById('route-re-counts');

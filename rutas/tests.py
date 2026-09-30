@@ -87,6 +87,62 @@ class ImportTests(TestCase):
         self.assertFalse(visible_ids.intersection(simulation.issues.values_list("pk", flat=True)))
 
 
+class RouteEditorTests(TestCase):
+    def test_cell_editor_and_form_editor_share_validated_operation_fields(self):
+        user = get_user_model().objects.create_superuser("capturista", "c@example.test", "example-long-password")
+        client = Client.objects.create(name="RHEEM")
+        self.client.force_login(user)
+        page = self.client.get(reverse("rutas:create"))
+        self.assertContains(page, 'data-editor-switch="sheet"')
+        self.assertContains(page, 'data-editor-switch="form"')
+        prefix = page.context["formset"].prefix
+        data = {"client": client.pk, "part": "", "code": "R-PRUEBA", "description": "Prueba",
+                "classification": "Headers", "revision": "", "status": Route.REVIEW, "editor_mode": "sheet",
+                f"{prefix}-TOTAL_FORMS": "2", f"{prefix}-INITIAL_FORMS": "0",
+                f"{prefix}-MIN_NUM_FORMS": "0", f"{prefix}-MAX_NUM_FORMS": "200"}
+        for index, name in enumerate(("CORTE", "DOBLEZ")):
+            data.update({f"{prefix}-{index}-position": str(index + 1),
+                         f"{prefix}-{index}-source_sequence": str(index + 1),
+                         f"{prefix}-{index}-name": name,
+                         f"{prefix}-{index}-machine": f"M-{index + 1}"})
+        response = self.client.post(reverse("rutas:create"), data)
+        self.assertEqual(response.status_code, 302)
+        route = Route.objects.get(code="R-PRUEBA")
+        self.assertEqual(list(route.operations.values_list("name", flat=True)), ["CORTE", "DOBLEZ"])
+        self.assertEqual(route.operations.count(), 2)
+
+        data["code"] = "R-INVALIDA"
+        data[f"{prefix}-1-position"] = "1"
+        data["editor_mode"] = "form"
+        response = self.client.post(reverse("rutas:create"), data)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-editor-mode="form"')
+        self.assertFalse(response.context["formset"].is_valid())
+        self.assertFalse(Route.objects.filter(code="R-INVALIDA").exists())
+
+    def test_existing_operation_can_be_edited_in_cells(self):
+        user = get_user_model().objects.create_superuser("editor", "e@example.test", "example-long-password")
+        client = Client.objects.create(name="LENNOX")
+        route = Route.objects.create(client=client, code="L-PRUEBA", status=Route.REVIEW)
+        operation = Operation.objects.create(route=route, position=1, source_sequence="1", name="CORTE")
+        self.client.force_login(user)
+        url = reverse("rutas:edit", args=[route.pk])
+        page = self.client.get(url)
+        prefix = page.context["formset"].prefix
+        self.assertContains(page, f'name="{prefix}-0-id" value="{operation.pk}"')
+        data = {"client": client.pk, "part": "", "code": route.code, "description": "",
+                "classification": "General", "revision": "", "status": Route.REVIEW, "version": route.version,
+                "editor_mode": "sheet", f"{prefix}-TOTAL_FORMS": "1", f"{prefix}-INITIAL_FORMS": "1",
+                f"{prefix}-MIN_NUM_FORMS": "0", f"{prefix}-MAX_NUM_FORMS": "200",
+                f"{prefix}-0-id": operation.pk, f"{prefix}-0-position": "1",
+                f"{prefix}-0-source_sequence": "1", f"{prefix}-0-name": "DOBLEZ",
+                f"{prefix}-0-machine": "M-1"}
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(route.operations.count(), 1)
+        self.assertEqual(route.operations.first().name, "DOBLEZ")
+
+
 class DocumentTests(TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()

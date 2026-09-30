@@ -1,1 +1,42 @@
-{% extends 'base.html' %}{% block breadcrumb %}<a href="{% url 'rutas:list' %}">Rutas</a> <span class="slash">/</span> {{ title }}{% endblock %}{% block content %}<div class="page-heading"><div><p class="eyebrow">CATÁLOGO</p><h1>{{ title }}</h1><p class="muted">Guarda la secuencia exacta de fabricación y sus recursos.</p></div></div><form method="post" class="editor">{% csrf_token %}{{ form.version }}{% if form.non_field_errors %}<div class="message error">{{ form.non_field_errors }}</div>{% endif %}<section class="card"><h2>Datos de la ruta</h2><div class="form-grid">{% for field in form.visible_fields %}<label>{{ field.label }} {{ field }}{% if field.errors %}<span class="field-error">{{ field.errors }}</span>{% endif %}</label>{% endfor %}</div></section><section class="card space-top"><div class="section-head"><h2>Operaciones</h2><span class="muted">El orden se determina por la posición.</span></div>{{ formset.management_form }}{% if formset.non_form_errors %}<div class="message error">{{ formset.non_form_errors }}</div>{% endif %}<div class="operation-form-list" data-formset-list data-prefix="{{ formset.prefix }}">{% for op_form in formset %}<div class="operation-form">{{ op_form.id }}<div class="form-grid operation-grid">{% for field in op_form.visible_fields %}<label>{{ field.label }} {{ field }}{% if field.errors %}<span class="field-error">{{ field.errors }}</span>{% endif %}</label>{% endfor %}</div></div>{% endfor %}</div><template data-formset-template="{{ formset.prefix }}"><div class="operation-form">{{ formset.empty_form.id }}<div class="form-grid operation-grid">{% for field in formset.empty_form.visible_fields %}<label>{{ field.label }} {{ field }}</label>{% endfor %}</div></div></template><button type="button" class="button secondary" data-add-form="{{ formset.prefix }}">＋ Agregar operación</button></section><div class="footer-actions"><a class="button secondary" href="{% if route %}{% url 'rutas:detail' route.pk %}{% else %}{% url 'rutas:list' %}{% endif %}">Cancelar</a><button class="button primary">Guardar ruta</button></div></form>{% endblock %}
+{% extends 'base.html' %}
+{% block breadcrumb %}<a href="{% url 'rutas:list' %}">Rutas</a> <span class="slash">/</span> {{ title }}{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><p class="eyebrow">CATÁLOGO</p><h1>{{ title }}</h1><p class="muted">Define la ruta y captura sus operaciones en celdas o en formulario.</p></div>
+</div>
+<form method="post" class="editor" data-route-editor>{% csrf_token %}{{ form.version }}
+  <input type="hidden" name="editor_mode" value="{% if request.POST.editor_mode == 'form' %}form{% else %}sheet{% endif %}" data-editor-mode-input>
+  {% if form.non_field_errors %}<div class="message error">{{ form.non_field_errors }}</div>{% endif %}
+  <section class="card">
+    <h2>Datos de la ruta</h2>
+    <div class="form-grid">{% for field in form.visible_fields %}<label>{{ field.label }} {{ field }}{% if field.errors %}<span class="field-error">{{ field.errors }}</span>{% endif %}</label>{% endfor %}</div>
+  </section>
+  <section class="card space-top operation-editor" data-operation-editor data-editor-mode="{% if request.POST.editor_mode == 'form' %}form{% else %}sheet{% endif %}">
+    <div class="section-head operation-section-head"><div><h2>Operaciones</h2><p class="muted">Cada fila representa un paso de la ruta.</p></div>
+      <div class="editor-switch" role="group" aria-label="Modo de captura de operaciones">
+        <button type="button" data-editor-switch="sheet" aria-pressed="{% if request.POST.editor_mode == 'form' %}false{% else %}true{% endif %}">Celdas</button>
+        <button type="button" data-editor-switch="form" aria-pressed="{% if request.POST.editor_mode == 'form' %}true{% else %}false{% endif %}">Formulario</button>
+      </div>
+    </div>
+    <p class="hint" data-sheet-hint>Puedes pegar filas o columnas copiadas de Excel. Orden de columnas: Posición, Secuencia, Proceso, Máquina, Herramental, Inspección y Eliminar.</p>
+    {{ formset.management_form }}
+    {% if formset.non_form_errors %}<div class="message error">{{ formset.non_form_errors }}</div>{% endif %}
+    <div class="operation-sheet-scroll">
+      <div class="operation-sheet">
+        <div class="operation-sheet-head" aria-hidden="true"><span>Posición</span><span>Secuencia</span><span>Proceso</span><span>Máquina</span><span>Herramental</span><span>Inspección</span><span>Eliminar</span></div>
+        <div class="operation-form-list" data-formset-list data-prefix="{{ formset.prefix }}">
+          {% for op_form in formset %}<div class="operation-form" data-operation-row>{{ op_form.id }}<div class="operation-grid">
+            {% for field in op_form.visible_fields %}<label class="operation-cell" data-op-col="{{ forloop.counter0 }}"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors }}</span>{% endif %}</label>{% endfor %}
+          </div></div>{% endfor %}
+        </div>
+      </div>
+    </div>
+    <template data-formset-template="{{ formset.prefix }}"><div class="operation-form" data-operation-row>{{ formset.empty_form.id }}<div class="operation-grid">
+      {% for field in formset.empty_form.visible_fields %}<label class="operation-cell" data-op-col="{{ forloop.counter0 }}"><span class="field-label">{{ field.label }}</span>{{ field }}</label>{% endfor %}
+    </div></div></template>
+    <p class="field-error" role="status" aria-live="polite" data-operation-message></p>
+    <div class="operation-actions"><button type="button" class="button secondary" data-add-form="{{ formset.prefix }}">＋ Agregar operación</button><span class="muted" data-operation-count></span></div>
+  </section>
+  <div class="footer-actions"><a class="button secondary" href="{% if route %}{% url 'rutas:detail' route.pk %}{% else %}{% url 'rutas:list' %}{% endif %}">Cancelar</a><button class="button primary">Guardar ruta</button></div>
+</form>
+{% endblock %}

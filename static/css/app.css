@@ -107,3 +107,44 @@
 :root[data-theme="dark"] .order-sheet input[readonly]{background:#242426;color:var(--text-secondary)}
 @media(max-width:650px){.theme-toggle [data-theme-label]{display:none}.theme-toggle{width:36px;padding:0}.login-theme-toggle{top:16px;right:16px}}
 @media(prefers-reduced-motion:reduce){.theme-toggle{transition:none}}
+
+/* Route editor: one formset, shown either as cells or as labeled fields. */
+.operation-section-head{align-items:flex-start;margin-bottom:14px}
+.operation-section-head .muted{font-size:13px}
+.editor-switch{display:inline-flex;gap:2px;padding:3px;border:1px solid #d2d2d7;border-radius:11px;background:#f5f5f7}
+.editor-switch button{min-height:32px;padding:0 14px;border:0;border-radius:8px;background:transparent;color:#6e6e73;font-size:12px;font-weight:650}
+.editor-switch button[aria-pressed="true"]{background:#fff;color:#1d1d1f;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+.editor-switch button:focus-visible{outline:2px solid #0071e3;outline-offset:2px}
+.operation-sheet-scroll{overflow-x:auto}
+.operation-sheet{min-width:970px}
+.operation-sheet-head,.operation-editor[data-editor-mode="sheet"] .operation-grid{display:grid;grid-template-columns:80px 100px minmax(190px,2fr) minmax(125px,1fr) minmax(145px,1fr) minmax(145px,1fr) 75px;gap:0}
+.operation-sheet-head{border:1px solid #e5e5ea;border-radius:10px 10px 0 0;background:#f5f5f7}
+.operation-sheet-head span{padding:11px 9px;border-right:1px solid #e5e5ea;color:#6e6e73;font-size:11px;font-weight:700;text-transform:uppercase}
+.operation-sheet-head span:last-child{border:0;text-align:center}
+.operation-editor[data-editor-mode="sheet"] .operation-form{padding:0;border:1px solid #e5e5ea;border-top:0}
+.operation-editor[data-editor-mode="sheet"] .operation-form:last-child{border-radius:0 0 10px 10px}
+.operation-editor[data-editor-mode="sheet"] .operation-cell{display:flex;align-items:center;min-width:0;margin:0;border-right:1px solid #e5e5ea}
+.operation-editor[data-editor-mode="sheet"] .operation-cell:last-child{border:0;justify-content:center}
+.operation-editor[data-editor-mode="sheet"] .field-label{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.operation-editor[data-editor-mode="sheet"] .operation-cell input:not([type="checkbox"]){width:100%;min-width:0;min-height:43px;padding:8px 9px;border:0;border-radius:0;background:transparent;font-size:13px}
+.operation-editor[data-editor-mode="sheet"] .operation-cell input:focus{position:relative;z-index:1;background:#f1f8ff;outline:2px solid #0071e3;outline-offset:-2px;box-shadow:none}
+.operation-editor[data-editor-mode="sheet"] .operation-cell input[type="checkbox"]{margin:0}
+.operation-editor[data-editor-mode="sheet"] .operation-cell .field-error{display:block;padding:4px 8px}
+.operation-editor[data-editor-mode="form"] .operation-sheet{min-width:0}
+.operation-editor[data-editor-mode="form"] .operation-sheet-head,.operation-editor[data-editor-mode="form"] [data-sheet-hint]{display:none}
+.operation-editor[data-editor-mode="form"] .operation-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.operation-editor[data-editor-mode="form"] .operation-cell{display:flex;flex-direction:column;gap:7px;min-width:0;font-size:12px;font-weight:650;color:#6e6e73}
+.operation-editor[data-editor-mode="form"] .operation-cell input:not([type="checkbox"]){width:100%}
+.operation-editor[data-editor-mode="form"] .operation-cell:last-child{align-items:flex-start}
+.operation-actions{display:flex;align-items:center;gap:14px;margin-top:14px}
+.operation-actions .muted{font-size:12px}
+:root[data-theme="dark"] .editor-switch{background:var(--surface-raised);border-color:var(--border)}
+:root[data-theme="dark"] .editor-switch button{color:var(--text-secondary)}
+:root[data-theme="dark"] .editor-switch button[aria-pressed="true"]{background:var(--surface-hover);color:var(--text)}
+:root[data-theme="dark"] .operation-sheet-head{background:var(--surface-raised);border-color:var(--border)}
+:root[data-theme="dark"] .operation-sheet-head span,:root[data-theme="dark"] .operation-editor[data-editor-mode="sheet"] .operation-form,:root[data-theme="dark"] .operation-editor[data-editor-mode="sheet"] .operation-cell{border-color:var(--border)}
+:root[data-theme="dark"] .operation-sheet-head span{color:var(--text-secondary)}
+:root[data-theme="dark"] .operation-editor[data-editor-mode="sheet"] .operation-cell input:not([type="checkbox"]){background:transparent}
+:root[data-theme="dark"] .operation-editor[data-editor-mode="sheet"] .operation-cell input:focus{background:rgba(10,132,255,.16);outline-color:var(--accent)}
+:root[data-theme="dark"] .operation-editor[data-editor-mode="form"] .operation-cell{color:var(--text-secondary)}
+@media(max-width:650px){.operation-section-head{flex-direction:column}.operation-editor[data-editor-mode="form"] .operation-grid{grid-template-columns:1fr}}
