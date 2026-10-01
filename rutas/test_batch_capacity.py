@@ -12,9 +12,9 @@ class BatchCapacityTests(SimpleTestCase):
     def workbook(self, count):
         book = Workbook()
         sheet = book.active
-        sheet.append(["ITEM PADRE", "CANTIDAD", "SEMANA", "RE"])
+        sheet.append(["ITEM PADRE", "CANTIDAD", "SEMANA"])
         for number in range(1, count + 1):
-            sheet.append(["PARTE-1", 1, f"{number:03}A", 0])
+            sheet.append(["PARTE-1", 1, f"{number:03}A"])
         stream = io.BytesIO()
         book.save(stream)
         return SimpleUploadedFile("ordenes.xlsx", stream.getvalue())
@@ -27,6 +27,17 @@ class BatchCapacityTests(SimpleTestCase):
         self.assertEqual(rows[-1]["sequence"], "200")
         with self.assertRaisesRegex(ValueError, "200 órdenes"):
             read_excel(self.workbook(201))
+
+    def test_previous_four_column_template_still_loads(self):
+        book = Workbook()
+        book.active.append(["ITEM PADRE", "CANTIDAD", "SEMANA", "RE"])
+        book.active.append(["PARTE-1", 2, "31A", 99])
+        stream = io.BytesIO()
+        book.save(stream)
+        rows = read_excel(SimpleUploadedFile("anterior.xlsx", stream.getvalue()))
+        self.assertEqual(rows[0]["shop_order"], "31A")
+        self.assertEqual(rows[0]["sequence"], "1")
+        self.assertEqual(rows[0]["re"], "")
 
     def test_200_labels_need_100_sheets(self):
         labels = [{"shop_order": f"SO-{number:03}", "operations": []} for number in range(1, 201)]

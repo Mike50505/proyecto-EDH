@@ -339,9 +339,9 @@ class DocumentTests(TestCase):
         template_response = self.client.get(reverse("rutas:batch_template"))
         self.assertEqual(template_response.status_code, 200)
         template_book = load_workbook(io.BytesIO(b"".join(template_response.streaming_content)), read_only=True)
-        self.assertEqual([template_book.active.cell(1, col).value for col in range(1, 5)],
-                         ["ITEM PADRE", "CANTIDAD", "SEMANA", "RE"])
-        self.assertIsNone(template_book.active["E1"].value)
+        self.assertEqual([template_book.active.cell(1, col).value for col in range(1, 4)],
+                         ["ITEM PADRE", "CANTIDAD", "SEMANA"])
+        self.assertIsNone(template_book.active["D1"].value)
         wb = Workbook()
         sheet = wb.active
         sheet.append(["SHOP ORDER", "ITEM PADRE", "CANTIDAD", "SEMANA", "RE", "Secuencia", "LINEA", "PLANNER", "RESPONSABLE"])
@@ -367,8 +367,8 @@ class DocumentTests(TestCase):
         self.assertEqual(IssuedDocument.objects.count(), 0)
 
         short_book = Workbook()
-        short_book.active.append(["ITEM PADRE", "CANTIDAD", "SEMANA", "RE"])
-        short_book.active.append([self.route.code, 5, "32B", 0])
+        short_book.active.append(["ITEM PADRE", "CANTIDAD", "SEMANA"])
+        short_book.active.append([self.route.code, 5, "32B"])
         short_stream = io.BytesIO()
         short_book.save(short_stream)
         short_upload = SimpleUploadedFile("seleccion.xlsx", short_stream.getvalue())

@@ -9,7 +9,8 @@ from django.utils import timezone
 from rutas.models import Route
 from rutas.services.documents import preview_labels_for_line, render_pdf
 
-HEADERS = ("ITEM PADRE", "CANTIDAD", "SEMANA", "RE")
+HEADERS = ("ITEM PADRE", "CANTIDAD", "SEMANA")
+PREVIOUS_HEADERS = ("ITEM PADRE", "CANTIDAD", "SEMANA", "RE")
 LEGACY_HEADERS = ("SHOP ORDER", "ITEM PADRE", "CANTIDAD", "SEMANA", "RE", "SECUENCIA")
 OLD_COMMON_HEADERS = ("LINEA", "PLANNER", "RESPONSABLE")
 FIELDS = ("shop_order", "parent_code", "quantity", "week", "re", "sequence", "line", "planner", "responsible")
@@ -34,18 +35,21 @@ def read_excel(upload):
         sheet = book.active
         headings = tuple(value_text(cell.value).upper() for cell in sheet[1][:9])
         legacy = headings[:6] == LEGACY_HEADERS and (not any(headings[6:]) or headings[6:] == OLD_COMMON_HEADERS)
-        current = headings[:4] == HEADERS and not any(headings[4:])
-        if not current and not legacy:
-            raise ValueError("La fila 1 debe contener ITEM PADRE, CANTIDAD, SEMANA y RE, en ese orden.")
+        previous = headings[:4] == PREVIOUS_HEADERS and not any(headings[4:])
+        current = headings[:3] == HEADERS and not any(headings[3:])
+        if not current and not previous and not legacy:
+            raise ValueError("La fila 1 debe contener ITEM PADRE, CANTIDAD y SEMANA, en ese orden.")
         rows = []
-        for cells in sheet.iter_rows(min_row=2, max_col=9 if legacy else 4, values_only=True):
+        for cells in sheet.iter_rows(min_row=2, max_col=9 if legacy else 4 if previous else 3, values_only=True):
             if legacy:
                 row = {field: value_text(value) for field, value in zip(FIELDS, cells)}
             else:
                 row = {field: "" for field in FIELDS}
-                for field, value in zip(("parent_code", "quantity", "week", "re"), cells):
+                for field, value in zip(("parent_code", "quantity", "week", "re") if previous else
+                                        ("parent_code", "quantity", "week"), cells):
                     row[field] = value_text(value)
             if any(row[field] for field in ("parent_code", "quantity", "week")):
+                row["re"] = ""
                 row["shop_order"] = row["week"]
                 row["sequence"] = str(len(rows) + 1)
                 rows.append(row)
