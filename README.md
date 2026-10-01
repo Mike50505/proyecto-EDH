@@ -54,7 +54,7 @@ El comando `reconcile_sources` compara contenidos entre variantes y reporta FP s
 ```text
 docker compose exec web python manage.py check
 docker compose exec web python manage.py test rutas --verbosity 2
-docker compose exec web python manage.py audit_print_sources
+docker compose exec web python manage.py audit_print_sources --large-batch
 docker compose exec web python manage.py benchmark_catalog --requests 40 --workers 4
 ```
 

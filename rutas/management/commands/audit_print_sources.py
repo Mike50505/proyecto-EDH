@@ -14,10 +14,14 @@ from rutas.services.documents import make_label, render_pdf
 class Command(BaseCommand):
     help = "Comprueba el PDF provisional y los tiempos de generación para cada fuente importada. No guarda documentos."
 
+    def add_arguments(self, parser):
+        parser.add_argument("--large-batch", action="store_true", help="Añade una prueba de 200 etiquetas en un PDF temporal.")
+
     def handle(self, *args, **options):
         sources = SourceBook.objects.select_related("client").order_by("client__name", "classification", "id")
         failures = []
         count = 0
+        batch_snapshot = None
         for source in sources:
             route = (Route.objects.filter(source=source, operations__isnull=False)
                      .select_related("part").prefetch_related("operations").distinct().order_by("pk").first())
@@ -46,8 +50,21 @@ class Command(BaseCommand):
             self.stdout.write(f"{source.client.name} / {source.classification}: ruta {route.code}, "
                               f"{pages} página(s), {len(pdf)} bytes, {elapsed:.0f} ms")
             count += 1
+            if batch_snapshot is None:
+                batch_snapshot = snapshot
         if failures:
             raise CommandError("\n".join(failures))
         if not count:
             raise CommandError("No hay fuentes importadas para comprobar.")
         self.stdout.write(self.style.SUCCESS(f"{count} variantes verificadas; ningún PDF guardado."))
+        if options["large_batch"]:
+            first_label = batch_snapshot["labels"][0]
+            batch_snapshot["labels"] = [{**first_label, "shop_order": f"AUD-{number:03}"}
+                                        for number in range(1, 201)]
+            started = perf_counter()
+            pdf = render_pdf(batch_snapshot)
+            pages = len(PdfReader(BytesIO(pdf)).pages)
+            if pages != 100:
+                raise CommandError(f"Se esperaban 100 páginas para 200 etiquetas; se obtuvieron {pages}.")
+            self.stdout.write(f"Lote de 200 etiquetas: {pages} páginas, {len(pdf)} bytes, "
+                              f"{perf_counter() - started:.2f} s; no guardado.")
