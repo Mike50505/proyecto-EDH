@@ -15,10 +15,12 @@ Se fijan Django 5.2.17 LTS, PostgreSQL 16.15, Python 3.13 y las demás versiones
 1. Copia `.env.example` a `.env`. Genera valores aleatorios propios para `DJANGO_SECRET_KEY` y `POSTGRES_PASSWORD`. Configura `DJANGO_ALLOWED_HOSTS` y `DJANGO_CSRF_TRUSTED_ORIGINS` para el nombre o IP de la red interna.
 2. Ejecuta `docker compose up -d --build`.
 3. Crea el administrador con `docker compose exec web python manage.py createsuperuser`.
-4. Crea los roles con `docker compose exec web python manage.py bootstrap_roles`. Asigna usuarios a los grupos desde `/admin/`.
+4. Crea los roles con `docker compose exec web python manage.py bootstrap_roles`. Después, entra con el superusuario y abre **Usuarios** para crear cuentas operativas y asignarles un rol.
 5. Abre `http://localhost:8000/` o la dirección interna configurada.
 
 La aplicación no publica PDFs ni archivos importados como medios estáticos; cada descarga pasa por permisos de Django. Los volúmenes `postgres_data` y `media_data` guardan los datos. `docker compose down` no los borra. No uses `down -v` para una instalación con datos que deban conservarse.
+
+La sección **Usuarios** es exclusiva para superusuarios. Permite buscar cuentas, crear usuarios operativos, cambiar sus datos y rol, activar o desactivar el acceso y establecer una contraseña nueva. Las cuentas con permisos de superusuario o de personal administrativo se gestionan desde `/admin/`.
 
 ## Acceso desde la red local
 

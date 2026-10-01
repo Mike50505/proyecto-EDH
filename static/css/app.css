@@ -208,3 +208,14 @@
 :root[data-theme="dark"] .family-editor[data-editor-mode="sheet"] .family-cell input{background:transparent}
 :root[data-theme="dark"] .family-editor[data-editor-mode="sheet"] .family-cell input:focus{background:rgba(10,132,255,.16);outline-color:var(--accent)}
 @media(max-width:650px){.family-editor[data-editor-mode="form"] .family-grid{grid-template-columns:1fr}}
+
+.user-editor{max-width:900px;display:grid;gap:20px}
+.user-form-grid{margin-top:20px}
+.user-active{display:flex;align-items:flex-start;gap:12px;margin-top:24px;cursor:pointer;color:#1d1d1f}
+.user-active input{margin:3px 0 0}
+.user-active span{display:grid;gap:4px}
+.user-active strong{font-size:13px}
+.user-active small{color:#6e6e73;font-size:12px;line-height:1.45}
+.user-password-card .muted{font-size:13px}
+:root[data-theme="dark"] .user-active{color:var(--text)}
+:root[data-theme="dark"] .user-active small{color:var(--text-secondary)}

@@ -1,0 +1,25 @@
+{% extends 'base.html' %}
+{% block title %}Usuarios · EDH{% endblock %}
+{% block breadcrumb %}Usuarios{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><p class="eyebrow">ADMINISTRACIÓN</p><h1>Usuarios</h1><p class="muted">Administra el acceso y los roles de las cuentas operativas.</p></div>
+  <a class="button primary" href="{% url 'rutas:user_create' %}">＋ Nuevo usuario</a>
+</div>
+<form method="get" class="filter-panel" role="search">
+  <div class="search-field"><span aria-hidden="true">⌕</span><input type="search" name="q" value="{{ query }}" aria-label="Buscar usuarios" placeholder="Buscar por usuario, nombre o correo"></div>
+  <button class="button secondary">Buscar</button>
+</form>
+<div class="table-card"><div class="table-caption"><strong>{{ page.paginator.count }} usuarios</strong><span>Mostrando {{ page.start_index }}–{{ page.end_index }}</span></div><div class="table-scroll"><table>
+  <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th></th></tr></thead><tbody>
+  {% for account in page %}<tr>
+    <td><strong>{{ account.username }}</strong><small>{{ account.email|default:'Sin correo' }}</small></td>
+    <td>{{ account.get_full_name|default:'—' }}</td>
+    <td>{% if account.is_superuser %}Administrador principal{% elif account.is_staff %}Personal administrativo{% else %}{% for group in account.groups.all %}{{ group.name }}{% if not forloop.last %}, {% endif %}{% empty %}Sin rol{% endfor %}{% endif %}</td>
+    <td><span class="status {% if account.is_active %}active{% else %}archived{% endif %}">{% if account.is_active %}Activo{% else %}Sin acceso{% endif %}</span></td>
+    <td>{{ account.last_login|date:'d/m/Y H:i'|default:'Nunca' }}</td>
+    <td>{% if not account.is_superuser and not account.is_staff %}<a class="button secondary" href="{% url 'rutas:user_edit' account.pk %}">Administrar</a>{% else %}<span class="muted">Admin de Django</span>{% endif %}</td>
+  </tr>{% empty %}<tr><td colspan="6" class="empty">No se encontraron usuarios.</td></tr>{% endfor %}
+  </tbody></table></div></div>
+{% if page.paginator.num_pages > 1 %}<nav class="pagination" aria-label="Páginas">{% if page.has_previous %}<a href="?q={{ query|urlencode }}&page={{ page.previous_page_number }}">← Anterior</a>{% endif %}<span>Página {{ page.number }} de {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?q={{ query|urlencode }}&page={{ page.next_page_number }}">Siguiente →</a>{% endif %}</nav>{% endif %}
+{% endblock %}

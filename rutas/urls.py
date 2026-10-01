@@ -1,9 +1,13 @@
 from django.urls import path
-from rutas import views
+from rutas import user_admin, views
 
 app_name = "rutas"
 urlpatterns = [
     path("", views.route_list, name="list"),
+    path("usuarios/", user_admin.user_list, name="user_list"),
+    path("usuarios/nuevo/", user_admin.user_create, name="user_create"),
+    path("usuarios/<int:pk>/editar/", user_admin.user_edit, name="user_edit"),
+    path("usuarios/<int:pk>/contrasena/", user_admin.user_password, name="user_password"),
     path("rutas/nueva/", views.route_create, name="create"),
     path("rutas/<int:pk>/", views.route_detail, name="detail"),
     path("rutas/<int:pk>/imprimir/", views.route_print, name="route_print"),

@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}{% if creating %}Nuevo usuario{% else %}Administrar usuario{% endif %} · EDH{% endblock %}
+{% block breadcrumb %}<a href="{% url 'rutas:user_list' %}">Usuarios</a> <span class="slash">/</span> {% if creating %}Nuevo{% else %}{{ managed_user.username }}{% endif %}{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">ACCESOS</p><h1>{% if creating %}Nuevo usuario{% else %}{{ managed_user.username }}{% endif %}</h1><p class="muted">{% if creating %}Crea una cuenta operativa y asigna su rol.{% else %}Actualiza los datos, el rol y el acceso de esta cuenta.{% endif %}</p></div></div>
+<div class="user-editor">
+  <form method="post" class="card" novalidate>{% csrf_token %}
+    <h2>Datos de la cuenta</h2>
+    {% if form.non_field_errors %}<div class="message error">{{ form.non_field_errors }}</div>{% endif %}
+    <div class="form-grid user-form-grid">
+      {% for field in form %}{% if field.name != 'is_active' %}<label for="{{ field.id_for_label }}">{{ field.label }}{{ field }}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</label>{% endif %}{% endfor %}
+    </div>
+    <label class="user-active" for="{{ form.is_active.id_for_label }}">{{ form.is_active }}<span><strong>Acceso activo</strong><small>Si se desactiva, la persona no podrá iniciar sesión.</small></span></label>
+    <div class="footer-actions"><a class="button secondary" href="{% url 'rutas:user_list' %}">Cancelar</a><button class="button primary" type="submit">{% if creating %}Crear usuario{% else %}Guardar cambios{% endif %}</button></div>
+  </form>
+  {% if not creating %}<form method="post" action="{% url 'rutas:user_password' managed_user.pk %}" class="card user-password-card" novalidate>{% csrf_token %}
+    <h2>Cambiar contraseña</h2><p class="muted">La contraseña nueva se aplica de inmediato.</p>
+    {% if password_form.non_field_errors %}<div class="message error">{{ password_form.non_field_errors }}</div>{% endif %}
+    <div class="form-grid user-form-grid">{% for field in password_form %}<label for="{{ field.id_for_label }}">{{ field.label }}{{ field }}{% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}</label>{% endfor %}</div>
+    <div class="footer-actions"><button class="button secondary" type="submit">Actualizar contraseña</button></div>
+  </form>{% endif %}
+</div>
+{% endblock %}
