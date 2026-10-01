@@ -13,7 +13,7 @@
     <td>{% if issue.run.source %}{{ issue.run.source.client.name }}<small>{{ issue.run.source.classification }}</small>{% else %}{{ issue.run.summary.client }}<small>{{ issue.run.summary.variant }}</small>{% endif %}</td>
     <td>{{ issue.sheet }} · {{ issue.row }}</td>
     <td>{% if issue.linked_route %}<a href="{% url 'rutas:detail' issue.linked_route.pk %}">{{ issue.code }}</a>{% else %}{{ issue.code }}{% endif %}</td>
-    <td><strong>{{ issue.kind }}</strong><small>{{ issue.detail }}</small></td>
+    <td><a class="row-link" href="{% url 'rutas:issue_detail' issue.pk %}">{{ issue.kind }}</a><small>{{ issue.detail }}</small><a class="issue-compare-link" href="{% url 'rutas:issue_detail' issue.pk %}">Ver comparación →</a></td>
     <td>{% if perms.rutas.change_importissue %}<form method="post" action="{% url 'rutas:issue_resolve' issue.pk %}" class="resolution-form">{% csrf_token %}<input name="resolution_note" required minlength="12" aria-label="Decisión para {{ issue.code }}" placeholder="Decisión y evidencia"><button class="button secondary">Resolver</button></form>{% else %}Solo lectura{% endif %}</td>
   </tr>{% empty %}<tr><td colspan="5" class="empty">No hay incidencias pendientes.</td></tr>{% endfor %}
   </tbody></table></div></div>

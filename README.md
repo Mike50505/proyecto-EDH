@@ -54,6 +54,8 @@ El comando `reconcile_sources` compara contenidos entre variantes y reporta FP s
 ```text
 docker compose exec web python manage.py check
 docker compose exec web python manage.py test rutas --verbosity 2
+docker compose exec web python manage.py audit_print_sources
+docker compose exec web python manage.py benchmark_catalog --requests 40 --workers 4
 ```
 
 La prueba usa una base PostgreSQL temporal. En este entorno se importaron las siete fuentes: 4,171 filas de Familias, 2,468 filas de Ruta y 11,534 grupos de operaciones. Hay 279 rutas DAIKIN, 282 LENNOX y 1,907 RHEEM; las 2,189 rutas nuevas siguen Por revisar. Los totales son filas conservadas, no rutas únicas ni producción confirmada. Véanse `docs/fuentes_multicliente.md` y `docs/validacion_impresion.md` para el alcance de la comprobación.
@@ -67,6 +69,8 @@ docker compose exec -T db pg_dump -U edh -Fc edh > edh.dump
 ```
 
 Para restaurar en un entorno de desarrollo vacío, inicia la base, copia el dump al contenedor y ejecuta `pg_restore -U edh -d edh --clean --if-exists /ruta/edh.dump`. En este entorno se restauró un dump en una base temporal y se verificaron 279 rutas, 326 piezas, 1,395 operaciones y 270 incidencias; después se eliminó esa base temporal. Respalda y restaura también el volumen `media_data`; sin él, las filas de documentos no tendrán sus PDFs. La restauración conjunta del volumen de PDFs aún debe probarse en el equipo definitivo.
+
+En Windows, `powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify_backup.ps1` crea una copia bajo `tmp/`, restaura PostgreSQL en una base temporal, compara conteos y comprueba los hashes de los PDFs que existan. Esta comprobación se hizo con 2,468 rutas y 4,171 piezas; todavía no hay documentos emitidos para validar el vínculo con un PDF real. Para un respaldo operativo, pausa las escrituras de documentos durante la copia de la base y el volumen.
 
 ## Límites actuales
 

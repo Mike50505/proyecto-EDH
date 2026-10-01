@@ -24,5 +24,6 @@ urlpatterns = [
     path("importar/", views.import_page, name="import"),
     path("importar/<int:pk>/informe/", views.import_report, name="import_report"),
     path("incidencias/", views.issue_list, name="issues"),
+    path("incidencias/<int:pk>/", views.issue_detail, name="issue_detail"),
     path("incidencias/<int:pk>/resolver/", views.issue_resolve, name="issue_resolve"),
 ]

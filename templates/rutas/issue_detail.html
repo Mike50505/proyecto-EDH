@@ -1,0 +1,21 @@
+{% extends 'base.html' %}
+{% block title %}Incidencia · EDH{% endblock %}
+{% block breadcrumb %}<a href="{% url 'rutas:issues' %}">Incidencias</a> <span class="slash">/</span> Comparación{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">REVISIÓN DE ORIGEN</p><h1>{{ issue.code|default:issue.kind }}</h1><p class="muted">{{ issue.kind }} · {{ issue.sheet }}!{{ issue.row }} · {{ issue.run.source.classification|default:issue.run.filename }}</p></div><a class="button secondary" href="{% url 'rutas:issues' %}">← Volver a incidencias</a></div>
+<div class="card compact issue-summary"><h2>Motivo de revisión</h2><p>{{ issue.detail }}</p>{% if issue.resolved %}<p class="hint">Resuelta por {{ issue.resolved_by|default:'—' }} el {{ issue.resolved_at|date:'d/m/Y H:i' }}: {{ issue.resolution_note }}</p>{% endif %}</div>
+{% if peers %}<form method="get" class="issue-peer-picker"><label for="peer">Comparar con</label><select name="peer" id="peer">{% for peer in peers %}<option value="{{ peer.pk }}" {% if selected_peer.pk == peer.pk %}selected{% endif %}>{{ peer.source.classification|default:'Captura web' }} · {{ peer.source.filename|default:'Sin archivo de origen' }} · fila {{ peer.source_row|default:'—' }}</option>{% endfor %}</select><button class="button secondary">Mostrar</button></form>{% endif %}
+<div class="issue-columns">
+  <section class="card issue-record"><p class="eyebrow">REGISTRO AFECTADO</p><h2>{% if left %}{{ left.kind }} · fila {{ left.row }}{% else %}{{ issue.sheet }} · fila {{ issue.row }}{% endif %}</h2>
+    {% if left %}<p class="hint">{{ left.source.filename|default:'Captura web' }}</p><dl class="issue-facts">{% for label, value in left.fields %}<div><dt>{{ label }}</dt><dd>{{ value|default:'—' }}</dd></div>{% endfor %}</dl>
+    {% if left.operations %}<div class="issue-operations"><h3>Operaciones</h3><div class="table-scroll"><table><thead><tr><th>Sec.</th><th>Proceso</th><th>Máquina</th><th>Herramental</th><th>Inspección</th></tr></thead><tbody>{% for op in left.operations %}<tr><td>{{ op.source_sequence|default:op.position }}</td><td>{{ op.name }}</td><td>{{ op.machine|default:'—' }}</td><td>{{ op.tooling|default:'—' }}</td><td>{{ op.inspection|default:'—' }}</td></tr>{% endfor %}</tbody></table></div></div>{% endif %}
+    {% else %}<p class="muted">No hay un registro importado vinculado a esta fila. Revisa el detalle del informe de importación.</p>{% endif %}
+  </section>
+  <section class="card issue-record"><p class="eyebrow">OTRA COINCIDENCIA</p><h2>{% if right %}{{ right.kind }} · fila {{ right.row|default:'—' }}{% else %}Sin registro equivalente{% endif %}</h2>
+    {% if right %}<p class="hint">{{ right.source.filename|default:'Captura web' }}</p><dl class="issue-facts">{% for label, value in right.fields %}<div><dt>{{ label }}</dt><dd>{{ value|default:'—' }}</dd></div>{% endfor %}</dl>
+    {% if right.operations %}<div class="issue-operations"><h3>Operaciones</h3><div class="table-scroll"><table><thead><tr><th>Sec.</th><th>Proceso</th><th>Máquina</th><th>Herramental</th><th>Inspección</th></tr></thead><tbody>{% for op in right.operations %}<tr><td>{{ op.source_sequence|default:op.position }}</td><td>{{ op.name }}</td><td>{{ op.machine|default:'—' }}</td><td>{{ op.tooling|default:'—' }}</td><td>{{ op.inspection|default:'—' }}</td></tr>{% endfor %}</tbody></table></div></div>{% endif %}
+    {% else %}<p class="muted">No se encontró otra fila con el mismo código en este cliente. Esta incidencia requiere revisar el registro y su archivo de origen.</p>{% endif %}
+  </section>
+</div>
+{% if perms.rutas.change_importissue and not issue.resolved %}<form method="post" action="{% url 'rutas:issue_resolve' issue.pk %}" class="card issue-resolution">{% csrf_token %}<div><h2>Documentar decisión</h2><p class="muted">La decisión no activa la ruta automáticamente.</p></div><label for="resolution_note">Decisión y evidencia</label><textarea id="resolution_note" name="resolution_note" required minlength="12" rows="3" placeholder="Describe qué registro se conserva y por qué"></textarea><div class="footer-actions"><button class="button primary">Resolver incidencia</button></div></form>{% endif %}
+{% endblock %}

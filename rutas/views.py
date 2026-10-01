@@ -16,7 +16,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from rutas.forms import FamilyForm, ImportForm, OperationFormSet, RouteForm, ScheduleForm, ScheduleLineFormSet
-from rutas.models import Client, ImportIssue, ImportRun, IssuedDocument, Operation, Route, RouteChange, Schedule, ScheduleLine
+from rutas.models import Client, ImportIssue, ImportRun, IssuedDocument, Operation, Part, Route, RouteChange, Schedule, ScheduleLine
 from rutas.services.documents import issue_schedule, make_label, render_pdf
 from rutas.services.batch_selection import blank_rows, build_pdf, read_excel, rows_from_post
 from rutas.services.importer import ImportErrorDetailed, import_workbook
@@ -443,6 +443,50 @@ def issue_list(request):
     kinds = ImportIssue.objects.filter(run__dry_run=False).values_list("kind", flat=True).distinct().order_by("kind")
     return render(request, "rutas/issues.html", {"page": page, "kind": kind, "kinds": kinds,
                                                    "client_name": client_name, "clients": Client.objects.order_by("name")})
+
+
+def issue_record(record):
+    if isinstance(record, Route):
+        return {"kind": "Ruta", "source": record.source, "row": record.source_row,
+                "fields": [("Código", record.code), ("Descripción", record.description),
+                           ("Clasificación", record.classification), ("Revisión", record.revision),
+                           ("Estado", record.get_status_display())],
+                "operations": list(record.operations.order_by("position", "id"))}
+    return {"kind": "Familias", "source": record.source, "row": record.source_row,
+            "fields": [("Tipo", record.part_type), ("Parte", record.code),
+                       ("Descripción", record.description), ("BOM", record.bom_revision),
+                       ("Dibujo rev", record.drawing_revision), ("Número dibujo", record.drawing_number),
+                       ("Cantidad", record.quantity_raw), ("OD", record.od_raw),
+                       ("Pared", record.wall_raw), ("Desarrollo", record.development_raw),
+                       ("Comentario", record.comments), ("Fase", record.phase)], "operations": []}
+
+
+@login_required
+@permission_required("rutas.view_importissue", raise_exception=True)
+def issue_detail(request, pk):
+    issue = get_object_or_404(ImportIssue.objects.select_related("run__source", "run__source__client", "resolved_by"),
+                              pk=pk, run__dry_run=False)
+    source = issue.run.source
+    record = None
+    peers = []
+    selected_peer = None
+    if source and issue.sheet == "Ruta":
+        record = Route.objects.filter(source=source, source_row=issue.row).select_related("source").prefetch_related("operations").first()
+        if record:
+            peers = list(Route.objects.filter(client=record.client, code=record.code).exclude(pk=record.pk)
+                         .select_related("source").prefetch_related("operations").order_by("source__classification", "source_row", "pk"))
+    elif source and issue.sheet == "Familias":
+        record = Part.objects.filter(source=source, source_row=issue.row).select_related("source").first()
+        if record:
+            peers = list(Part.objects.filter(client=record.client, code=record.code).exclude(pk=record.pk)
+                         .select_related("source").order_by("source__classification", "source_row", "pk"))
+    if peers:
+        selected_peer = next((peer for peer in peers if str(peer.pk) == request.GET.get("peer")), peers[0])
+    return render(request, "rutas/issue_detail.html", {
+        "issue": issue, "record": record, "left": issue_record(record) if record else None,
+        "peers": peers, "selected_peer": selected_peer,
+        "right": issue_record(selected_peer) if selected_peer else None,
+    })
 
 
 @login_required
