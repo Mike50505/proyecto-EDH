@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: letter landscape; margin: 2mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: #1d1d1f; font: 6.5pt Arial, Helvetica, sans-serif; }
+  .sheet { break-after: page; }
+  .sheet:last-child { break-after: auto; }
+  .label { height: 103mm; padding: 1.5mm 2mm; border: .25mm solid #c7c7cc; overflow: hidden; break-inside: avoid; }
+  .label + .label { margin-top: 1.8mm; }
+  .header { width: 100%; height: 10.5mm; border-collapse: collapse; border-bottom: .4mm solid #0071e3; }
+  .header td { padding: 0; vertical-align: middle; }
+  .brand { width: 24%; }
+  .brand img { display: block; width: 30mm; max-height: 10mm; object-fit: contain; }
+  .identity { width: 52%; }
+  .identity strong { display: block; font-size: 12pt; line-height: 1.05; letter-spacing: -.25pt; }
+  .identity span { display: block; color: #6e6e73; font-size: 6.4pt; margin-top: .7mm; }
+  .badge { width: 24%; text-align: right; }
+  .badge strong { display: inline-block; padding: 1mm 2mm; border-radius: 2mm; background: #f5f5f7; color: #0066cc; font-size: 6pt; letter-spacing: .35pt; }
+  .topline { width: 100%; border-collapse: collapse; margin-top: .7mm; }
+  .topline td { padding: 0 1mm 0 0; vertical-align: top; }
+  .part { width: 45%; }
+  .eyebrow { display: block; color: #6e6e73; font-size: 5.3pt; font-weight: bold; letter-spacing: .35pt; text-transform: uppercase; }
+  .part strong { display: block; font-size: 10pt; line-height: 1; margin-top: .3mm; }
+  .part small { display: block; font-size: 5.8pt; color: #6e6e73; margin-top: .2mm; white-space: nowrap; overflow: hidden; }
+  .metric { width: 18.3%; border-left: .16mm solid #dedee2; padding-left: 2mm !important; }
+  .metric strong { display: block; font-size: 8.2pt; line-height: 1.2; margin-top: .4mm; color: #1d1d1f; }
+  .meta { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: .8mm; }
+  .meta td { height: 3.6mm; padding: .2mm 1mm; border-bottom: .12mm solid #dedee2; vertical-align: middle; overflow-wrap: anywhere; }
+  .meta .key { color: #6e6e73; width: 9%; white-space: nowrap; }
+  .meta .value { font-weight: bold; color: #1d1d1f; width: 24.3%; }
+  .dimensions { height: 3mm; padding: .35mm 1mm; margin-top: .4mm; background: #f5f5f7; color: #424245; font-size: 5.8pt; }
+  .dimensions strong { color: #1d1d1f; }
+  .operations { width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: .5mm; }
+  .operations th { height: 3.2mm; padding: 0 1mm; background: #f5f5f7; color: #424245; border-bottom: .2mm solid #b8b8bd; text-align: left; font-size: 6pt; }
+  .operations td { height: 2.65mm; padding: 0 1mm; border-bottom: .12mm solid #dedee2; vertical-align: top; line-height: 1.02; font-size: 5.5pt; overflow-wrap: anywhere; }
+  .operations .number { color: #6e6e73; }
+  .operations .resource { color: #0066cc; font-weight: bold; }
+  .footer { width: 100%; border-collapse: collapse; margin-top: .5mm; }
+  .footer td { height: 3.3mm; padding: .3mm 1mm; border: .12mm solid #dedee2; color: #6e6e73; font-size: 5.7pt; font-weight: bold; vertical-align: top; }
+  .footer .reference { border: 0; text-align: right; color: #6e6e73; font-size: 5pt; }
+  .pending { display: block; margin-top: .6mm; color: #a14400; font-size: 5.2pt; font-weight: bold; }
+</style>
+</head>
+<body>
+{% for sheet in sheets %}
+<section class="sheet">
+{% for label in sheet %}
+  <article class="label">
+    <table class="header"><tr>
+      <td class="brand"><img src="{{ logo_uri }}" alt="MESA Ramos Arizpe"></td>
+      <td class="identity"><strong>Ruta de proceso</strong><span>EDH · Especificación Dimensional y Herramental</span></td>
+      <td class="badge"><strong>ETIQUETA DE CORTE</strong></td>
+    </tr></table>
+    <table class="topline"><tr>
+      <td class="part"><span class="eyebrow">ITEM PADRE · {{ label.client|default:data.client }}</span><strong>{{ label.parent_code }}</strong><small>{{ label.parent_description|default:'—' }}</small></td>
+      <td class="metric"><span class="eyebrow">CANTIDAD / Pzas</span><strong>{{ label.quantity }}</strong></td>
+      <td class="metric"><span class="eyebrow">SEMANA</span><strong>{{ label.week|default:data.week }}</strong></td>
+      <td class="metric"><span class="eyebrow">ETIQUETA</span><strong>{{ label.label_index }} de {{ label.label_total }}</strong></td>
+    </tr></table>
+    <table class="meta">
+      <tr><td class="key">Componente</td><td class="value">{{ label.component_code }}</td><td class="key">Shop Order</td><td class="value">{{ label.shop_order }}</td><td class="key">RE / Sec.</td><td class="value">{{ label.re_count }} / {{ label.sequence }}</td></tr>
+      <tr><td class="key">Descripción</td><td class="value">{{ label.component_description|default:'—' }}</td><td class="key">Línea</td><td class="value">{{ label.line|default:data.line }}</td><td class="key">Copia</td><td class="value">{{ label.copy_number }} de {{ data.copies }}</td></tr>
+      <tr><td class="key">Planner</td><td class="value">{{ label.planner|default:data.planner }}</td><td class="key">Responsable</td><td class="value">{{ label.responsible|default:data.responsible }}</td><td class="key">Emisión</td><td class="value">{{ data.issue_date }}</td></tr>
+      <tr><td class="key">Embarque</td><td class="value">{{ data.ship_date|default:'—' }}</td><td class="key">Origen</td><td class="value">{{ label.classification|default:'—' }}</td><td class="key">Página</td><td class="value">{{ label.segment }} de {{ label.segments }}</td></tr>
+    </table>
+    <div class="dimensions"><strong>DIMENSIONES ORIGINALES</strong> &nbsp; OD {{ label.dimensions.od|default:'—' }} &nbsp; · &nbsp; Pared {{ label.dimensions.wall|default:'—' }} &nbsp; · &nbsp; Desarrollo {{ label.dimensions.development|default:'—' }} &nbsp; · &nbsp; Confirmar unidades en el origen</div>
+    <table class="operations">
+      <colgroup><col style="width:3%"><col style="width:19%"><col style="width:10%"><col style="width:18%"><col style="width:23%"><col style="width:9%"><col style="width:8%"><col style="width:10%"></colgroup>
+      <thead><tr><th>#</th><th>Ruta</th><th>Máquina</th><th>Inspección</th><th>Herramental</th><th>Cantidad</th><th>Fecha</th><th>No. operador</th></tr></thead>
+      <tbody>{% for op in label.operation_rows %}<tr><td class="number">{{ op.row_number }}</td><td>{{ op.name }}</td><td class="resource">{{ op.machine }}</td><td class="resource">{{ op.inspection }}</td><td>{{ op.tooling }}</td><td></td><td></td><td></td></tr>{% endfor %}</tbody>
+    </table>
+    <table class="footer"><tr><td style="width:50%">Instrucciones especiales:</td><td style="width:20%">Certificado:</td><td style="width:30%">Plan de reacción:</td></tr><tr><td colspan="2">Notas de calidad:</td><td class="reference">22 Sep-2014 Rev.00 FO-CP-08</td></tr></table>
+    <span class="pending">{% if data.preview_status %}{{ data.preview_status }} · {% endif %}{% if label.preview_note %}{{ label.preview_note }} · {% endif %}Composición basada en captura; escala física pendiente de validar.</span>
+  </article>
+{% endfor %}
+</section>
+{% endfor %}
+</body></html>

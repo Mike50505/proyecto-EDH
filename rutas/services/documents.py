@@ -11,6 +11,22 @@ from rutas.models import ImportIssue, IssuedDocument, Route
 
 ROWS_PER_LABEL = 10  # fifteen writable rows remain on each physical label
 WRITABLE_ROWS = 15
+CLASSIC_TEMPLATE = "mesa-two-labels-v1"
+MODERN_TEMPLATE = "mesa-modern-v1"
+PRINT_TEMPLATES = (
+    (CLASSIC_TEMPLATE, "Formato clásico"),
+    (MODERN_TEMPLATE, "Formato moderno"),
+)
+TEMPLATE_FILES = {
+    CLASSIC_TEMPLATE: "rutas/pdf.html",
+    MODERN_TEMPLATE: "rutas/pdf_modern.html",
+}
+
+
+def validate_print_template(template_key):
+    if template_key not in TEMPLATE_FILES:
+        raise ValueError("Selecciona un diseño de impresión válido.")
+    return template_key
 
 
 def ensure_emittable(route):
@@ -149,16 +165,18 @@ def print_sheets(snapshot):
     return sheets
 
 
-def render_pdf(snapshot):
+def render_pdf(snapshot, template_key=CLASSIC_TEMPLATE):
     from weasyprint import HTML
 
+    validate_print_template(template_key)
     logo = Path(settings.BASE_DIR) / "static" / "img" / "mesa.jpg"
     logo_uri = "data:image/jpeg;base64," + base64.b64encode(logo.read_bytes()).decode("ascii")
-    html = render_to_string("rutas/pdf.html", {"data": snapshot, "sheets": print_sheets(snapshot), "logo_uri": logo_uri})
+    html = render_to_string(TEMPLATE_FILES[template_key], {"data": snapshot, "sheets": print_sheets(snapshot), "logo_uri": logo_uri})
     return HTML(string=html).write_pdf()
 
 
-def issue_schedule(schedule, user):
+def issue_schedule(schedule, user, template_key=CLASSIC_TEMPLATE):
+    validate_print_template(template_key)
     lines = list(schedule.lines.select_related("route").order_by("position", "id"))
     if not lines:
         raise ValueError("Agregue al menos una partida.")
@@ -168,9 +186,9 @@ def issue_schedule(schedule, user):
                 "lines": [snapshot_line(line) for line in lines],
                 "labels": [label for line in lines for label in labels_for_line(line)],
                 "format_status": "Composición cotejada con captura; escala física pendiente"}
-    pdf_bytes = render_pdf(snapshot)
+    pdf_bytes = render_pdf(snapshot, template_key)
     digest = hashlib.sha256(pdf_bytes).hexdigest()
-    document = IssuedDocument(schedule=schedule, created_by=user, template_key="mesa-two-labels-v1", snapshot=snapshot, sha256=digest)
+    document = IssuedDocument(schedule=schedule, created_by=user, template_key=template_key, snapshot=snapshot, sha256=digest)
     document.pdf.save(f"ruta-{schedule.pk}-{digest[:12]}.pdf", ContentFile(pdf_bytes), save=False)
     document.save()
     return document

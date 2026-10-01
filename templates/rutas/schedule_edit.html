@@ -18,7 +18,7 @@
     <template data-formset-template="{{ formset.prefix }}"><div class="operation-form">{{ formset.empty_form.id }}<div class="form-grid">{% for field in formset.empty_form.visible_fields %}<label>{{ field.label }} {{ field }}</label>{% endfor %}</div></div></template>
     <button type="button" class="button secondary" data-add-form="{{ formset.prefix }}">＋ Agregar ruta</button>
   </section>
-  <div class="footer-actions"><a class="button secondary" href="{% url 'rutas:list' %}">Volver al catálogo</a><button class="button secondary" name="action" value="review">Revisar cantidades</button>{% if perms.rutas.add_issueddocument %}<button class="button primary" name="action" value="print_all">Generar PDF de todas</button>{% endif %}</div>
+  <div class="footer-actions"><a class="button secondary" href="{% url 'rutas:list' %}">Volver al catálogo</a><button class="button secondary" name="action" value="review">Revisar cantidades</button>{% if perms.rutas.add_issueddocument %}<label>Diseño del PDF <select name="template_key" aria-label="Diseño del PDF">{% for key, label in print_templates %}<option value="{{ key }}" {% if template_key == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><button class="button primary" name="action" value="print_all">Generar PDF de todas</button>{% endif %}</div>
 </form>
 {{ re_counts|json_script:"route-re-counts" }}
 {% endblock %}

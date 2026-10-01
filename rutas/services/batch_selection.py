@@ -85,7 +85,7 @@ def rows_from_post(post):
     return rows
 
 
-def build_pdf(rows):
+def build_pdf(rows, template_key="mesa-two-labels-v1"):
     """Resolve each row against the whole catalog and render entirely in memory."""
     first = rows[0]
     defaults = {key: first.get(key, "") for key in ("week", "line", "planner", "responsible")}
@@ -152,4 +152,4 @@ def build_pdf(rows):
         "ship_date": "", "copies": 1, "lines": [], "labels": labels,
         "preview_status": "VISTA PREVIA · RUTAS POR REVISAR · NO APROBADA" if has_unapproved_routes else "SELECCIÓN TEMPORAL · NO GUARDADA",
     }
-    return render_pdf(snapshot)
+    return render_pdf(snapshot, template_key)

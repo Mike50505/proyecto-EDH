@@ -12,7 +12,7 @@ from pypdf import PdfReader
 
 from rutas.forms import ScheduleLineForm
 from rutas.models import BOMItem, Client, ImportIssue, ImportRun, IssuedDocument, Operation, Part, Route, Schedule, ScheduleLine, SourceBook
-from rutas.services.documents import issue_schedule, render_pdf
+from rutas.services.documents import CLASSIC_TEMPLATE, MODERN_TEMPLATE, issue_schedule, render_pdf
 from rutas.services.importer import ImportErrorDetailed, import_workbook
 from rutas.services.reconciliation import reconcile_all
 
@@ -179,6 +179,11 @@ class PdfPaginationTests(TestCase):
         self.assertEqual(len(pages), 6)
         self.assertTrue(all(page.extract_text().count("ETIQUETA DE CORTE") == 2 for page in pages))
 
+        modern_pages = PdfReader(io.BytesIO(render_pdf(snapshot, MODERN_TEMPLATE))).pages
+        self.assertEqual(len(modern_pages), 6)
+        self.assertTrue(all(page.extract_text().count("ETIQUETA DE CORTE") == 2 for page in modern_pages))
+        self.assertIn("Ruta de proceso", modern_pages[0].extract_text())
+
 
 class DocumentTests(TestCase):
     def setUp(self):
@@ -204,6 +209,23 @@ class DocumentTests(TestCase):
         self.assertEqual(document.snapshot["week"], "31A")
         self.assertTrue(document.snapshot["issue_date"])
         self.assertEqual(document.snapshot["lines"][0]["operations"][0]["inspection"], "I-1")
+
+    def test_modern_document_keeps_selected_design_and_original_logo(self):
+        classic = issue_schedule(self.schedule, self.user)
+        modern = issue_schedule(self.schedule, self.user, MODERN_TEMPLATE)
+        self.assertEqual(classic.template_key, CLASSIC_TEMPLATE)
+        self.assertEqual(modern.template_key, MODERN_TEMPLATE)
+        classic_page = PdfReader(io.BytesIO(classic.pdf.open("rb").read())).pages[0]
+        modern_page = PdfReader(io.BytesIO(modern.pdf.open("rb").read())).pages[0]
+        self.assertIn("EDH", classic_page.extract_text())
+        self.assertIn("Ruta de proceso", modern_page.extract_text())
+        self.assertTrue(modern_page.images)
+        self.assertNotEqual(classic.sha256, modern.sha256)
+
+    def test_invalid_design_does_not_issue_document(self):
+        with self.assertRaisesRegex(ValueError, "diseño de impresión válido"):
+            issue_schedule(self.schedule, self.user, "otro")
+        self.assertEqual(IssuedDocument.objects.count(), 0)
 
     def test_document_download_checks_server_permission(self):
         document = issue_schedule(self.schedule, self.user)
@@ -285,6 +307,11 @@ class DocumentTests(TestCase):
         self.assertEqual(pdf[:4], b"%PDF")
         self.assertIn("NO PRODUCCIÓN", PdfReader(io.BytesIO(pdf)).pages[0].extract_text())
         self.assertEqual(IssuedDocument.objects.count(), 0)
+
+        modern_response = self.client.get(print_url, {"template_key": MODERN_TEMPLATE})
+        modern_text = PdfReader(io.BytesIO(b"".join(modern_response.streaming_content))).pages[0].extract_text()
+        self.assertIn("Ruta de proceso", modern_text)
+        self.assertEqual(self.client.get(print_url, {"template_key": "otro"}).status_code, 400)
 
     def test_print_preview_requires_view_permission(self):
         self.client.force_login(self.user)
@@ -435,6 +462,11 @@ class DocumentTests(TestCase):
         self.assertEqual(Schedule.objects.count(), 1)
         self.assertEqual(IssuedDocument.objects.count(), 0)
 
+        data["template_key"] = MODERN_TEMPLATE
+        modern_response = self.client.post(url, data)
+        self.assertIn("Ruta de proceso", PdfReader(io.BytesIO(b"".join(modern_response.streaming_content))).pages[0].extract_text())
+        self.assertEqual(IssuedDocument.objects.count(), 0)
+
     def test_batch_print_allows_marked_preview_of_unapproved_route(self):
         self.route.status = Route.REVIEW
         self.route.save()
@@ -468,7 +500,8 @@ class DocumentTests(TestCase):
 
         data = {"client": self.client_record.pk, "week": "31A", "line": "L1", "planner": "Ana",
                 "responsible": "Luis", "issue_date": "2026-09-29", "ship_date": "", "copies": "1",
-                "action": "print_all", "lines-TOTAL_FORMS": "2", "lines-INITIAL_FORMS": "0",
+                "action": "print_all", "template_key": MODERN_TEMPLATE,
+                "lines-TOTAL_FORMS": "2", "lines-INITIAL_FORMS": "0",
                 "lines-MIN_NUM_FORMS": "0", "lines-MAX_NUM_FORMS": "1000"}
         for index, route in enumerate((self.route, second)):
             data.update({f"lines-{index}-position": str(index + 1), f"lines-{index}-route": str(route.pk),
@@ -476,6 +509,7 @@ class DocumentTests(TestCase):
         response = self.client.post(reverse("rutas:schedule_create"), data)
         self.assertEqual(response.status_code, 302)
         document = IssuedDocument.objects.get()
+        self.assertEqual(document.template_key, MODERN_TEMPLATE)
         self.assertEqual(response.url, reverse("rutas:document", args=[document.pk]))
         self.assertEqual(len(document.snapshot["labels"]), 2)
         self.assertEqual(document.snapshot["week"], "31A")

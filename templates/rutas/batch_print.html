@@ -41,7 +41,7 @@
     <td><input name="rows-__index__-week" aria-label="SEMANA fila __number__"></td>
     <td><input name="rows-__index__-re" aria-label="RE fila __number__" data-re readonly title="Calculado de los componentes RM"></td>
   </tr></template>
-  <div class="batch-actions"><button type="button" class="button secondary" data-add-order-row>＋ Agregar fila</button><span class="muted">La secuencia se asigna al imprimir. Las órdenes no se guardan.</span>{% if perms.rutas.add_issueddocument %}<button class="button primary" name="action" value="print">Crear PDF de las órdenes</button>{% endif %}</div>
+  <div class="batch-actions"><button type="button" class="button secondary" data-add-order-row>＋ Agregar fila</button><span class="muted">La secuencia se asigna al imprimir. Las órdenes no se guardan.</span>{% if perms.rutas.add_issueddocument %}<label>Diseño del PDF <select name="template_key" aria-label="Diseño del PDF">{% for key, label in print_templates %}<option value="{{ key }}" {% if template_key == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><button class="button primary" name="action" value="print">Crear PDF de las órdenes</button>{% endif %}</div>
 </form>
 {{ route_catalog|json_script:"batch-route-catalog" }}
 {% endblock %}

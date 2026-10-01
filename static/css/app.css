@@ -259,3 +259,8 @@
 .route-picker-cell select[hidden]{display:none}
 :root[data-theme="dark"] .optional-label{color:var(--text-tertiary)}
 :root[data-theme="dark"] .route-picker-cell select:not([hidden]){background:var(--surface-raised);border-color:var(--accent)}
+.batch-actions label,.footer-actions label,.page-heading .actions label{display:flex;align-items:center;gap:8px;color:#6e6e73;font-size:12px;font-weight:650;white-space:nowrap}
+.batch-actions label select,.footer-actions label select,.page-heading .actions label select{min-width:158px}
+.page-heading .actions form{display:flex;align-items:center;gap:10px}
+@media(max-width:750px){.footer-actions,.page-heading .actions,.page-heading .actions form{flex-wrap:wrap}.batch-actions label{justify-content:space-between}}
+:root[data-theme="dark"] .batch-actions label,:root[data-theme="dark"] .footer-actions label,:root[data-theme="dark"] .page-heading .actions label{color:var(--text-secondary)}
