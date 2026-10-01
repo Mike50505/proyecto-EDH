@@ -23,11 +23,6 @@ from rutas.services.importer import ImportErrorDetailed, import_workbook
 from rutas.services.source_catalog import CLIENT_VARIANTS
 
 
-# Values in Datos!A of the original Headers workbook; entered orders remain temporary.
-SOURCE_SHOP_ORDERS = {"DAIKIN": ("RAMOS A", "RAMOS B", "RAMOS C", "RAMOS D", "RAMOS E"),
-                      "LENNOX": ("RA0101",), "RHEEM": ()}
-
-
 def route_data(route):
     return {"code": route.code, "description": route.description, "classification": route.classification,
             "revision": route.revision, "status": route.status,
@@ -191,6 +186,9 @@ def batch_print(request):
                      ("shop_order", "parent_code", "quantity", "week", "re", "sequence", "line", "planner", "responsible")}
                     for index in range(submitted_count)
                 ] or blank_rows()
+                for index, row in enumerate(rows, 1):
+                    row["shop_order"] = row["week"]
+                    row["sequence"] = str(index)
                 for field in ("line", "planner", "responsible"):
                     rows[0][field] = request.POST.get(f"common_{field}", "").strip()
     return render_batch_page(request, rows, errors, classification, notice, client_name)
@@ -203,18 +201,12 @@ def render_batch_page(request, rows, errors, classification, notice="", client_n
     ).order_by("source_row", "id").values_list("client__name", "classification", "code", "rm_count")
     for client, variant, code, count in route_values:
         route_catalog.setdefault(client, {}).setdefault(variant, {}).setdefault(code, count)
-    order_catalog = {client: set(orders) for client, orders in SOURCE_SHOP_ORDERS.items()}
-    for client, shop_order in ScheduleLine.objects.exclude(shop_order="").values_list("schedule__client__name", "shop_order"):
-        order_catalog.setdefault(client, set()).add(shop_order)
-    order_catalog.setdefault(client_name, set()).update(row.get("shop_order", "").strip() for row in rows)
-    order_catalog = {client: sorted(values - {""}, key=str.casefold) for client, values in order_catalog.items()}
     client_routes = route_catalog.get(client_name, {})
     classifications = sorted(variant for variant in client_routes if variant)
     selected_routes = {code: count for codes in client_routes.values() for code, count in codes.items()} if not classification else {
         **client_routes.get("", {}), **client_routes.get(classification, {})}
     parent_codes = sorted(selected_routes, key=str.casefold)
     re_map = {code.upper(): count for code, count in selected_routes.items()}
-    shop_orders = order_catalog.get(client_name, [])
     warnings = []
     for index, row in enumerate(rows, 1):
         code = row.get("parent_code", "").strip()
@@ -227,8 +219,8 @@ def render_batch_page(request, rows, errors, classification, notice="", client_n
             warnings.append(f"Fila {index + 1}: {code} está Por revisar. El PDF será una vista previa no aprobada.")
     return render(request, "rutas/batch_print.html", {"rows": rows, "errors": errors, "classification": classification,
         "classifications": classifications, "client_name": client_name, "clients": Client.objects.order_by("name"),
-        "shop_orders": shop_orders, "parent_codes": parent_codes, "route_catalog": route_catalog,
-        "order_catalog": order_catalog, "re_map": re_map, "notice": notice, "warnings": warnings})
+        "parent_codes": parent_codes, "route_catalog": route_catalog,
+        "re_map": re_map, "notice": notice, "warnings": warnings})
 
 
 @login_required

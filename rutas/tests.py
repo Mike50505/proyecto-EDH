@@ -299,17 +299,15 @@ class DocumentTests(TestCase):
         self.assertContains(response, 'value="0210A00205"')
         self.assertEqual(Schedule.objects.count(), 1)
 
-    def test_batch_grid_suggests_orders_and_parent_items(self):
+    def test_batch_grid_suggests_parent_items(self):
         self.user.user_permissions.add(Permission.objects.get(codename="add_schedule"))
         self.client.force_login(self.user)
         response = self.client.get(reverse("rutas:batch_print"))
-        self.assertContains(response, '<datalist id="shop-order-options">')
-        self.assertContains(response, '<option value="RAMOS A"></option>')
-        self.assertContains(response, '<option value="SO-A"></option>')
         self.assertContains(response, '<datalist id="parent-code-options">')
         self.assertContains(response, '<option value="0210A00205"></option>')
-        self.assertContains(response, 'list="shop-order-options" data-shop-order autocomplete="off"')
         self.assertContains(response, 'list="parent-code-options" data-parent-code autocomplete="off"')
+        self.assertNotContains(response, '<th>SHOP ORDER</th>')
+        self.assertNotContains(response, '<th>Secuencia</th>')
 
     def test_client_filter_and_batch_pdf_use_selected_client(self):
         rheem = Client.objects.create(name="RHEEM")
@@ -341,9 +339,9 @@ class DocumentTests(TestCase):
         template_response = self.client.get(reverse("rutas:batch_template"))
         self.assertEqual(template_response.status_code, 200)
         template_book = load_workbook(io.BytesIO(b"".join(template_response.streaming_content)), read_only=True)
-        self.assertEqual(template_book.active["A1"].value, "SHOP ORDER")
-        self.assertEqual(template_book.active["F1"].value, "Secuencia")
-        self.assertIsNone(template_book.active["G1"].value)
+        self.assertEqual([template_book.active.cell(1, col).value for col in range(1, 5)],
+                         ["ITEM PADRE", "CANTIDAD", "SEMANA", "RE"])
+        self.assertIsNone(template_book.active["E1"].value)
         wb = Workbook()
         sheet = wb.active
         sheet.append(["SHOP ORDER", "ITEM PADRE", "CANTIDAD", "SEMANA", "RE", "Secuencia", "LINEA", "PLANNER", "RESPONSABLE"])
@@ -354,9 +352,10 @@ class DocumentTests(TestCase):
         upload = SimpleUploadedFile("ordenes.xlsx", stream.getvalue())
         url = reverse("rutas:batch_print")
         response = self.client.post(url, {"action": "upload", "workbook": upload})
-        self.assertContains(response, 'value="SO-1"')
         self.assertContains(response, 'value="0210A00205"')
-        self.assertContains(response, 'value="SO-2"')
+        self.assertNotContains(response, 'name="rows-0-shop_order"')
+        self.assertEqual(response.context["rows"][0]["shop_order"], "31A")
+        self.assertEqual(response.context["rows"][1]["sequence"], "2")
         self.assertContains(response, 'name="common_line" value="DAIKIN"')
         self.assertContains(response, 'name="common_planner" value="Ana"')
         self.assertEqual(response.content.count(b'name="common_line"'), 1)
@@ -368,15 +367,16 @@ class DocumentTests(TestCase):
         self.assertEqual(IssuedDocument.objects.count(), 0)
 
         short_book = Workbook()
-        short_book.active.append(["SHOP ORDER", "ITEM PADRE", "CANTIDAD", "SEMANA", "RE", "Secuencia"])
-        short_book.active.append(["SO-3", self.route.code, 5, "31A", 0, 1])
+        short_book.active.append(["ITEM PADRE", "CANTIDAD", "SEMANA", "RE"])
+        short_book.active.append([self.route.code, 5, "32B", 0])
         short_stream = io.BytesIO()
         short_book.save(short_stream)
         short_upload = SimpleUploadedFile("seleccion.xlsx", short_stream.getvalue())
         short_response = self.client.post(url, {"action": "upload", "workbook": short_upload,
                                                  "common_line": "DAIKIN", "common_planner": "Ana",
                                                  "common_responsible": "Luis"})
-        self.assertContains(short_response, 'value="SO-3"')
+        self.assertEqual(short_response.context["rows"][0]["shop_order"], "32B")
+        self.assertEqual(short_response.context["rows"][0]["sequence"], "1")
         self.assertContains(short_response, 'name="common_responsible" value="Luis"')
 
         data = {"action": "print", "row_count": "2", "classification": "",
@@ -393,6 +393,8 @@ class DocumentTests(TestCase):
         self.assertEqual(pdf[:4], b"%PDF")
         self.assertEqual(len(PdfReader(io.BytesIO(pdf)).pages), 1)
         self.assertIn("RM-B", PdfReader(io.BytesIO(pdf)).pages[0].extract_text())
+        self.assertNotIn("SO-1", PdfReader(io.BytesIO(pdf)).pages[0].extract_text())
+        self.assertNotIn("SO-2", PdfReader(io.BytesIO(pdf)).pages[0].extract_text())
         self.assertEqual(PdfReader(io.BytesIO(pdf)).pages[0].extract_text().count("Ana"), 2)
         self.assertEqual(Schedule.objects.count(), 1)
         self.assertEqual(IssuedDocument.objects.count(), 0)

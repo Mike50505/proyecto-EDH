@@ -9,7 +9,8 @@ from django.utils import timezone
 from rutas.models import Route
 from rutas.services.documents import preview_labels_for_line, render_pdf
 
-HEADERS = ("SHOP ORDER", "ITEM PADRE", "CANTIDAD", "SEMANA", "RE", "SECUENCIA")
+HEADERS = ("ITEM PADRE", "CANTIDAD", "SEMANA", "RE")
+LEGACY_HEADERS = ("SHOP ORDER", "ITEM PADRE", "CANTIDAD", "SEMANA", "RE", "SECUENCIA")
 OLD_COMMON_HEADERS = ("LINEA", "PLANNER", "RESPONSABLE")
 FIELDS = ("shop_order", "parent_code", "quantity", "week", "re", "sequence", "line", "planner", "responsible")
 MAX_ROWS = 200
@@ -32,12 +33,21 @@ def read_excel(upload):
         book = load_workbook(BytesIO(upload.read()), read_only=True, data_only=True)
         sheet = book.active
         headings = tuple(value_text(cell.value).upper() for cell in sheet[1][:9])
-        if headings[:6] != HEADERS or (any(headings[6:]) and headings[6:] != OLD_COMMON_HEADERS):
-            raise ValueError("La fila 1 debe contener SHOP ORDER, ITEM PADRE, CANTIDAD, SEMANA, RE y Secuencia, en ese orden.")
+        legacy = headings[:6] == LEGACY_HEADERS and (not any(headings[6:]) or headings[6:] == OLD_COMMON_HEADERS)
+        current = headings[:4] == HEADERS and not any(headings[4:])
+        if not current and not legacy:
+            raise ValueError("La fila 1 debe contener ITEM PADRE, CANTIDAD, SEMANA y RE, en ese orden.")
         rows = []
-        for cells in sheet.iter_rows(min_row=2, max_col=9, values_only=True):
-            row = {field: value_text(value) for field, value in zip(FIELDS, cells)}
-            if any(row.values()):
+        for cells in sheet.iter_rows(min_row=2, max_col=9 if legacy else 4, values_only=True):
+            if legacy:
+                row = {field: value_text(value) for field, value in zip(FIELDS, cells)}
+            else:
+                row = {field: "" for field in FIELDS}
+                for field, value in zip(("parent_code", "quantity", "week", "re"), cells):
+                    row[field] = value_text(value)
+            if any(row[field] for field in ("parent_code", "quantity", "week")):
+                row["shop_order"] = row["week"]
+                row["sequence"] = str(len(rows) + 1)
                 rows.append(row)
             if len(rows) > MAX_ROWS:
                 raise ValueError("La plantilla admite hasta 200 órdenes por lote.")
@@ -60,7 +70,9 @@ def rows_from_post(post):
     rows = []
     for index in range(count):
         row = {field: value_text(post.get(f"rows-{index}-{field}")) for field in FIELDS}
-        if any(row.get(field) for field in ("shop_order", "parent_code", "quantity", "week", "sequence")):
+        if any(row.get(field) for field in ("parent_code", "quantity", "week")):
+            row["shop_order"] = row["week"]
+            row["sequence"] = str(len(rows) + 1)
             rows.append(row)
     if not rows:
         raise ValueError("Agrega al menos una orden.")
@@ -82,9 +94,8 @@ def build_pdf(rows, classification, client_name="DAIKIN"):
         effective = {"week": row.get("week") or defaults["week"],
                      "line": defaults["line"], "planner": defaults["planner"],
                      "responsible": defaults["responsible"]}
-        for key, title in (("shop_order", "SHOP ORDER"), ("parent_code", "ITEM PADRE")):
-            if not row.get(key):
-                errors.append(f"Fila {display_row}: falta {title}.")
+        if not row.get("parent_code"):
+            errors.append(f"Fila {display_row}: falta ITEM PADRE.")
         if not effective["week"]:
             errors.append(f"Fila {display_row}: falta SEMANA.")
         if row_index == 1:
@@ -98,13 +109,7 @@ def build_pdf(rows, classification, client_name="DAIKIN"):
         except (InvalidOperation, KeyError):
             errors.append(f"Fila {display_row}: CANTIDAD debe ser mayor que cero.")
             continue
-        try:
-            sequence = int(row["sequence"])
-            if sequence <= 0:
-                raise ValueError
-        except (ValueError, KeyError):
-            errors.append(f"Fila {display_row}: Secuencia debe ser un entero positivo.")
-            continue
+        sequence = row_index
         if not row.get("parent_code"):
             continue
         routes = Route.objects.filter(code__iexact=row["parent_code"], client__name=client_name).exclude(
@@ -123,7 +128,7 @@ def build_pdf(rows, classification, client_name="DAIKIN"):
             errors.append(f"Fila {display_row}: las órdenes del lote deben ser del mismo cliente.")
             continue
         client = route.client
-        line = SimpleNamespace(route_id=route.pk, shop_order=row["shop_order"], quantity=quantity, position=sequence)
+        line = SimpleNamespace(route_id=route.pk, shop_order=effective["week"], quantity=quantity, position=sequence)
         try:
             route_labels, _, needs_review = preview_labels_for_line(line)
         except ValueError as exc:

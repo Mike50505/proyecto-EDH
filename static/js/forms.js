@@ -262,13 +262,9 @@ const batchReSource = document.getElementById('batch-re-map');
 let batchReMap = batchReSource ? JSON.parse(batchReSource.textContent) : {};
 const routeCatalogSource = document.getElementById('batch-route-catalog');
 const routeCatalog = routeCatalogSource ? JSON.parse(routeCatalogSource.textContent) : {};
-const orderCatalogSource = document.getElementById('batch-order-catalog');
-const orderCatalog = orderCatalogSource ? JSON.parse(orderCatalogSource.textContent) : {};
 const batchClient = document.querySelector('[data-batch-client]');
 const batchVariant = document.querySelector('[data-batch-variant]');
 const parentCodeOptions = document.getElementById('parent-code-options');
-const shopOrderOptions = document.getElementById('shop-order-options');
-const knownShopOrders = Object.fromEntries(Object.entries(orderCatalog).map(([client, orders]) => [client, new Set(orders)]));
 const batchForm = document.querySelector('[data-batch-form]');
 const commonFields = [...document.querySelectorAll('[data-common-field]')];
 let currentBatchClient = batchClient?.value || 'DAIKIN';
@@ -310,14 +306,12 @@ function refreshBatchVariants() {
 }
 
 function refreshBatchSuggestions() {
-  if (!batchVariant || !parentCodeOptions || !shopOrderOptions) return;
+  if (!batchVariant || !parentCodeOptions) return;
   const variants = routeCatalog[currentBatchClient] || {};
   const selected = batchVariant.value ? [variants[''] || {}, variants[batchVariant.value] || {}] : Object.values(variants);
   const routes = Object.assign({}, ...selected);
   batchReMap = Object.fromEntries(Object.entries(routes).map(([code, count]) => [code.toUpperCase(), count]));
   parentCodeOptions.replaceChildren(...Object.keys(routes).sort().map(code => new Option('', code)));
-  const orders = knownShopOrders[currentBatchClient] || new Set();
-  shopOrderOptions.replaceChildren(...[...orders].sort().map(order => new Option('', order)));
   batchRows?.querySelectorAll('[data-parent-code]').forEach(updateBatchRe);
 }
 batchVariant?.addEventListener('change', refreshBatchSuggestions);
@@ -337,21 +331,9 @@ function updateBatchRe(input) {
   if (re) re.value = batchReMap[input.value.trim().toUpperCase()] ?? '';
 }
 
-function rememberShopOrder(input) {
-  const value = input?.value.trim();
-  if (!value || !shopOrderOptions) return;
-  const known = knownShopOrders[currentBatchClient] ||= new Set();
-  if ([...known].some(order => order.toLocaleLowerCase() === value.toLocaleLowerCase())) return;
-  shopOrderOptions.append(new Option('', value));
-  known.add(value);
-}
-
 document.querySelector('[data-add-order-row]')?.addEventListener('click', () => addOrderRow()?.querySelector('input')?.focus());
 batchRows?.addEventListener('input', event => {
   if (event.target.matches('[data-parent-code]')) updateBatchRe(event.target);
-});
-batchRows?.addEventListener('change', event => {
-  if (event.target.matches('[data-shop-order]')) rememberShopOrder(event.target);
 });
 batchRows?.querySelectorAll('[data-parent-code]').forEach(updateBatchRe);
 
@@ -363,23 +345,25 @@ batchRows?.addEventListener('paste', event => {
   const startColumn = [...input.closest('tr').querySelectorAll('input')].indexOf(input);
   let row = input.closest('tr');
   const matrix = pasted.trimEnd().split(/\r?\n/).map(line => line.split('\t'));
-  if (matrix[0]?.[0]?.trim().toUpperCase() === 'SHOP ORDER') matrix.shift();
+  const firstHeader = matrix[0]?.[0]?.trim().toUpperCase();
+  const legacy = firstHeader === 'SHOP ORDER' || (startColumn === 0 && firstHeader !== 'ITEM PADRE' && matrix[0]?.length >= 6);
+  if (firstHeader === 'SHOP ORDER' || firstHeader === 'ITEM PADRE') matrix.shift();
   for (const cells of matrix) {
     if (!row) row = addOrderRow();
     if (!row) break;
-    if (row === batchRows.firstElementChild && startColumn === 0 && cells.length >= 9) {
+    if (legacy && row === batchRows.firstElementChild && startColumn === 0 && cells.length >= 9) {
       commonFields.forEach((field, offset) => {
         field.value = cells[6 + offset]?.trim() || '';
         field.dispatchEvent(new Event('input', { bubbles: true }));
       });
     }
     const inputs = [...row.querySelectorAll('input')];
-    cells.forEach((value, offset) => {
+    const visibleCells = legacy && startColumn === 0 ? cells.slice(1, 5) : cells;
+    visibleCells.forEach((value, offset) => {
       const target = inputs[startColumn + offset];
       if (target && !target.readOnly) target.value = value.trim();
     });
     updateBatchRe(row.querySelector('[data-parent-code]'));
-    rememberShopOrder(row.querySelector('[data-shop-order]'));
     row = row.nextElementSibling;
   }
 });
