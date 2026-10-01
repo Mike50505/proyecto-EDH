@@ -20,6 +20,12 @@ Se fijan Django 5.2.17 LTS, PostgreSQL 16.15, Python 3.13 y las demás versiones
 
 La aplicación no publica PDFs ni archivos importados como medios estáticos; cada descarga pasa por permisos de Django. Los volúmenes `postgres_data` y `media_data` guardan los datos. `docker compose down` no los borra. No uses `down -v` para una instalación con datos que deban conservarse.
 
+## Acceso desde la red local
+
+Docker publica TCP 8000 en el equipo servidor. Añade la IP local a `DJANGO_ALLOWED_HOSTS` y su origen `http://IP:8000` a `DJANGO_CSRF_TRUSTED_ORIGINS` en `.env`; después ejecuta `docker compose up -d --no-deps --force-recreate web`. En Windows, permite TCP 8000 en el firewall solo para la interfaz y la subred local que usarán los demás dispositivos.
+
+Desde otro dispositivo de la misma red, abre `http://IP-DEL-SERVIDOR:8000/`. Si cambia la IP del equipo, actualiza `.env` y la dirección local de la regla del firewall.
+
 ## Importación
 
 Desde **Importar Excel**, selecciona el cliente y la variante de origen, el archivo `.xlsm` e introduce la contraseña de apertura. Ejecuta primero **Solo simular**. La contraseña no se almacena ni se registra. Revisa el CSV de incidencias y repite sin esa casilla para confirmar. También se puede usar el comando:
