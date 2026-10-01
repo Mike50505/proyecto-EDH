@@ -14,7 +14,7 @@ Se hicieron simulaciones de los tres libros nuevos antes de importarlos. Sus rec
 
 El cliente y la variante se seleccionan explícitamente al importar. En el libro RHEEM Headers, `Datos!G2` dice `RHEMM`; se conserva como incidencia `cliente_distinto` y las rutas se asignan a RHEEM por la selección explícita. La pantalla de incidencias muestra solo ejecuciones confirmadas; los informes de simulación siguen disponibles por separado.
 
-El catálogo y la tabla temporal de impresión se filtran por cliente y variante. Las sugerencias de ITEM PADRE y SHOP ORDER se limitan al cliente; pegar filas de Excel sigue disponible. Los valores comunes LINEA, PLANNER y RESPONSABLE se recuerdan por usuario y cliente en el navegador.
+El catálogo conserva filtros de consulta por cliente y variante. La tabla temporal de impresión busca ITEM PADRE en todos los clientes y orígenes y permite mezclarlos en un PDF. Cuando un código tiene varias rutas, cada fila exige elegir el cliente y origen correctos. Pegar filas de Excel sigue disponible. Los valores comunes LINEA, PLANNER y RESPONSABLE son opcionales y se recuerdan por usuario en el navegador.
 
 ## Puerta de aprobación
 

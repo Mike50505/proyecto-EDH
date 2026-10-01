@@ -13,7 +13,7 @@ HEADERS = ("ITEM PADRE", "CANTIDAD", "SEMANA")
 PREVIOUS_HEADERS = ("ITEM PADRE", "CANTIDAD", "SEMANA", "RE")
 LEGACY_HEADERS = ("SHOP ORDER", "ITEM PADRE", "CANTIDAD", "SEMANA", "RE", "SECUENCIA")
 OLD_COMMON_HEADERS = ("LINEA", "PLANNER", "RESPONSABLE")
-FIELDS = ("shop_order", "parent_code", "quantity", "week", "re", "sequence", "line", "planner", "responsible")
+FIELDS = ("shop_order", "parent_code", "quantity", "week", "re", "sequence", "line", "planner", "responsible", "route_id")
 MAX_ROWS = 200
 
 
@@ -85,13 +85,13 @@ def rows_from_post(post):
     return rows
 
 
-def build_pdf(rows, classification, client_name="DAIKIN"):
-    """Validate against approved routes and render entirely in memory."""
+def build_pdf(rows):
+    """Resolve each row against the whole catalog and render entirely in memory."""
     first = rows[0]
     defaults = {key: first.get(key, "") for key in ("week", "line", "planner", "responsible")}
     labels = []
     errors = []
-    client = None
+    clients = set()
     has_unapproved_routes = False
     for row_index, row in enumerate(rows, 1):
         display_row = row_index + 1
@@ -102,10 +102,6 @@ def build_pdf(rows, classification, client_name="DAIKIN"):
             errors.append(f"Fila {display_row}: falta ITEM PADRE.")
         if not effective["week"]:
             errors.append(f"Fila {display_row}: falta SEMANA.")
-        if row_index == 1:
-            for key, title in (("line", "LINEA"), ("planner", "PLANNER"), ("responsible", "RESPONSABLE")):
-                if not defaults[key]:
-                    errors.append(f"Completa {title} una vez para todo el lote.")
         try:
             quantity = Decimal(row["quantity"])
             if not quantity.is_finite() or quantity <= 0:
@@ -116,37 +112,41 @@ def build_pdf(rows, classification, client_name="DAIKIN"):
         sequence = row_index
         if not row.get("parent_code"):
             continue
-        routes = Route.objects.filter(code__iexact=row["parent_code"], client__name=client_name).exclude(
+        routes = Route.objects.filter(code__iexact=row["parent_code"]).exclude(
             status=Route.ARCHIVED).select_related("client", "part", "source")
-        if classification:
-            routes = routes.filter(classification=classification)
-        matches = list(routes.order_by("source_row", "id")[:2])
+        matches = list(routes.order_by("client__name", "classification", "source_row", "id")[:2])
         if not matches:
-            errors.append(f"Fila {display_row}: no se encontró una ruta disponible para {row['parent_code']}.")
+            errors.append(f"Fila {display_row}: no se encontró ITEM PADRE {row['parent_code']} en el catálogo.")
             continue
-        if not classification and len({route.classification for route in matches}) > 1:
-            errors.append(f"Fila {display_row}: {row['parent_code']} existe en varios orígenes. Elige uno en la parte superior.")
+        selected_id = str(row.get("route_id") or "").strip()
+        if selected_id:
+            valid_id = selected_id.isascii() and selected_id.isdigit() and len(selected_id) <= 18
+            route = routes.filter(pk=selected_id).first() if valid_id else None
+            if route is None:
+                errors.append(f"Fila {display_row}: la ruta elegida no corresponde a {row['parent_code']}.")
+                continue
+        elif len(matches) == 1:
+            route = matches[0]
+        else:
+            errors.append(f"Fila {display_row}: {row['parent_code']} tiene varias rutas. Elige cliente y origen en esa fila.")
             continue
-        route = matches[0]
-        if client and route.client_id != client.pk:
-            errors.append(f"Fila {display_row}: las órdenes del lote deben ser del mismo cliente.")
-            continue
-        client = route.client
+        clients.add(route.client.name)
         line = SimpleNamespace(route_id=route.pk, shop_order=effective["week"], quantity=quantity, position=sequence)
         try:
             route_labels, _, needs_review = preview_labels_for_line(line)
         except ValueError as exc:
             errors.append(f"Fila {display_row}: {exc}")
             continue
-        has_unapproved_routes = has_unapproved_routes or needs_review or len(matches) > 1
+        has_unapproved_routes = has_unapproved_routes or needs_review
         for label in route_labels:
             label.update(effective)
+            label["client"] = route.client.name
         labels.extend(route_labels)
         row["re"] = str(route_labels[0]["re_count"])
     if errors:
         raise ValueError("\n".join(errors))
     snapshot = {
-        "client": client.name, "week": defaults["week"], "line": defaults["line"],
+        "client": next(iter(clients)) if len(clients) == 1 else "Varios clientes", "week": defaults["week"], "line": defaults["line"],
         "planner": defaults["planner"], "responsible": defaults["responsible"],
         "issue_date": timezone.localdate().isoformat(),
         "ship_date": "", "copies": 1, "lines": [], "labels": labels,

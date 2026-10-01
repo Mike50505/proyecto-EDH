@@ -258,63 +258,36 @@ if (importClient && importVariant && sourceVariants) {
 const batchRows = document.querySelector('[data-order-rows]');
 const batchTemplate = document.querySelector('[data-order-template]');
 const batchCount = document.querySelector('[data-row-count]');
-const batchReSource = document.getElementById('batch-re-map');
-let batchReMap = batchReSource ? JSON.parse(batchReSource.textContent) : {};
 const routeCatalogSource = document.getElementById('batch-route-catalog');
 const routeCatalog = routeCatalogSource ? JSON.parse(routeCatalogSource.textContent) : {};
-const batchClient = document.querySelector('[data-batch-client]');
-const batchVariant = document.querySelector('[data-batch-variant]');
 const parentCodeOptions = document.getElementById('parent-code-options');
 const batchForm = document.querySelector('[data-batch-form]');
 const commonFields = [...document.querySelectorAll('[data-common-field]')];
-let currentBatchClient = batchClient?.value || 'DAIKIN';
 if (batchForm && commonFields.length) {
-  const key = client => `edh.batch.common.v2.${batchForm.dataset.user}.${client}`;
-  const saveCommon = (client = currentBatchClient) => {
+  const key = `edh.batch.common.v3.${batchForm.dataset.user}`;
+  const saveCommon = () => {
     const values = Object.fromEntries(commonFields.map(input => [input.dataset.commonField, input.value]));
-    try { localStorage.setItem(key(client), JSON.stringify(values)); } catch (_) { /* Storage may be disabled. */ }
+    try { localStorage.setItem(key, JSON.stringify(values)); } catch (_) { /* Storage may be disabled. */ }
   };
-  const loadCommon = (client, useRenderedValues = false) => {
+  const loadCommon = () => {
     let saved = {};
     try {
-      const legacy = client === 'DAIKIN' ? localStorage.getItem(`edh.batch.common.v1.${batchForm.dataset.user}`) : null;
-      saved = JSON.parse(localStorage.getItem(key(client)) || legacy || '{}');
+      const old = localStorage.getItem(`edh.batch.common.v2.${batchForm.dataset.user}.DAIKIN`) ||
+        localStorage.getItem(`edh.batch.common.v1.${batchForm.dataset.user}`);
+      saved = JSON.parse(localStorage.getItem(key) || old || '{}');
     } catch (_) { saved = {}; }
     for (const input of commonFields) {
-      if (useRenderedValues && input.value.trim()) saved[input.dataset.commonField] = input.value;
+      if (input.value.trim()) saved[input.dataset.commonField] = input.value;
       input.value = saved[input.dataset.commonField] || '';
     }
-    saveCommon(client);
+    saveCommon();
   };
   commonFields.forEach(input => input.addEventListener('input', () => saveCommon()));
-  loadCommon(currentBatchClient, true);
-  batchClient?.addEventListener('change', () => {
-    saveCommon(currentBatchClient);
-    currentBatchClient = batchClient.value;
-    loadCommon(currentBatchClient);
-    refreshBatchVariants();
-    refreshBatchSuggestions();
-  });
+  loadCommon();
 }
 
-function refreshBatchVariants() {
-  if (!batchVariant) return;
-  const variants = Object.keys(routeCatalog[currentBatchClient] || {}).filter(Boolean).sort();
-  batchVariant.replaceChildren(new Option('Seleccionar si hay duplicados', ''),
-    ...variants.map(variant => new Option(variant, variant)));
-  batchVariant.value = variants[0] || '';
-}
-
-function refreshBatchSuggestions() {
-  if (!batchVariant || !parentCodeOptions) return;
-  const variants = routeCatalog[currentBatchClient] || {};
-  const selected = batchVariant.value ? [variants[''] || {}, variants[batchVariant.value] || {}] : Object.values(variants);
-  const routes = Object.assign({}, ...selected);
-  batchReMap = Object.fromEntries(Object.entries(routes).map(([code, count]) => [code.toUpperCase(), count]));
-  parentCodeOptions.replaceChildren(...Object.keys(routes).sort().map(code => new Option('', code)));
-  batchRows?.querySelectorAll('[data-parent-code]').forEach(updateBatchRe);
-}
-batchVariant?.addEventListener('change', refreshBatchSuggestions);
+parentCodeOptions?.replaceChildren(...Object.values(routeCatalog)
+  .map(routes => routes[0].code).sort((a, b) => a.localeCompare(b)).map(code => new Option('', code)));
 
 function addOrderRow() {
   if (!batchRows || !batchTemplate || Number(batchCount.value) >= 200) return null;
@@ -325,17 +298,38 @@ function addOrderRow() {
   return batchRows.lastElementChild;
 }
 
-function updateBatchRe(input) {
+function updateBatchRoute(input) {
   if (!input) return;
-  const re = input.closest('tr')?.querySelector('[data-re]');
-  if (re) re.value = batchReMap[input.value.trim().toUpperCase()] ?? '';
+  const row = input.closest('tr');
+  const choice = row?.querySelector('[data-route-choice]');
+  if (!choice) return;
+  const routes = routeCatalog[input.value.trim().toUpperCase()] || [];
+  const previous = choice.value;
+  choice.replaceChildren(new Option('Elige cliente y origen', ''),
+    ...routes.map(route => new Option(route.label, String(route.id))));
+  if (routes.length === 1) choice.value = String(routes[0].id);
+  else if (routes.some(route => String(route.id) === previous)) choice.value = previous;
+  choice.hidden = routes.length < 2;
+  updateBatchRe(row);
+}
+
+function updateBatchRe(row) {
+  const code = row?.querySelector('[data-parent-code]')?.value.trim().toUpperCase();
+  const selected = row?.querySelector('[data-route-choice]')?.value;
+  const route = (routeCatalog[code] || []).find(item => String(item.id) === selected);
+  const re = row?.querySelector('[data-re]');
+  if (re) re.value = route?.re ?? '';
 }
 
 document.querySelector('[data-add-order-row]')?.addEventListener('click', () => addOrderRow()?.querySelector('input')?.focus());
 batchRows?.addEventListener('input', event => {
-  if (event.target.matches('[data-parent-code]')) updateBatchRe(event.target);
+  if (event.target.matches('[data-parent-code]')) updateBatchRoute(event.target);
+  if (event.target.matches('[data-route-choice]')) updateBatchRe(event.target.closest('tr'));
 });
-batchRows?.querySelectorAll('[data-parent-code]').forEach(updateBatchRe);
+batchRows?.addEventListener('change', event => {
+  if (event.target.matches('[data-route-choice]')) updateBatchRe(event.target.closest('tr'));
+});
+batchRows?.querySelectorAll('[data-parent-code]').forEach(updateBatchRoute);
 
 batchRows?.addEventListener('paste', event => {
   const input = event.target.closest('input');
@@ -363,7 +357,7 @@ batchRows?.addEventListener('paste', event => {
       const target = inputs[startColumn + offset];
       if (target && !target.readOnly) target.value = value.trim();
     });
-    updateBatchRe(row.querySelector('[data-parent-code]'));
+    updateBatchRoute(row.querySelector('[data-parent-code]'));
     row = row.nextElementSibling;
   }
 });

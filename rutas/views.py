@@ -70,13 +70,11 @@ def route_list(request):
 @require_POST
 def route_select(request):
     scope = request.POST.get("scope")
-    client_name = request.POST.get("client", "DAIKIN")
+    client_name = request.POST.get("client", "")
     if scope == "all":
-        if not client_name:
-            messages.error(request, "Elige un cliente antes de llevar todas las rutas del filtro.")
-            return redirect("rutas:list")
         routes = Route.objects.filter(status=Route.ACTIVE)
-        routes = routes.filter(client__name=client_name)
+        if client_name:
+            routes = routes.filter(client__name=client_name)
         query = request.POST.get("q", "").strip()
         classification = request.POST.get("classification", "")
         status = request.POST.get("status", "")
@@ -100,17 +98,13 @@ def route_select(request):
     if not ids:
         messages.error(request, "Selecciona al menos una ruta activa.")
         return redirect("rutas:list")
-    if Route.objects.filter(pk__in=ids).values("client_id").distinct().count() != 1:
-        messages.error(request, "Selecciona rutas de un solo cliente por programación.")
-        return redirect("rutas:list")
     selected = {route.pk: route for route in Route.objects.filter(pk__in=ids).select_related("client", "part")}
     rows = blank_rows(max(12, len(ids)))
     for index, route_id in enumerate(ids):
         route = selected[route_id]
-        rows[index].update(parent_code=route.code, sequence=str(index + 1),
+        rows[index].update(parent_code=route.code, route_id=str(route.pk), sequence=str(index + 1),
                            re=str(route.part.components.filter(component__part_type="RM").count()) if route.part_id else "0")
-    origins = {selected[pk].classification for pk in ids}
-    return render_batch_page(request, rows, [], origins.pop() if len(origins) == 1 else "", client_name=selected[ids[0]].client.name)
+    return render_batch_page(request, rows, [])
 
 
 @login_required
@@ -147,10 +141,6 @@ def batch_print(request):
     rows = blank_rows()
     errors = []
     notice = ""
-    client_name = request.POST.get("client", "DAIKIN") if request.method == "POST" else request.GET.get("client", "DAIKIN")
-    classification = request.POST.get("classification", "") if request.method == "POST" else request.GET.get("classification", "Headers" if client_name == "DAIKIN" else "")
-    if not Client.objects.filter(name=client_name).exists():
-        errors.append("Selecciona un cliente disponible.")
     if request.method == "POST":
         action = request.POST.get("action")
         try:
@@ -165,9 +155,7 @@ def batch_print(request):
                 if not request.user.has_perm("rutas.add_issueddocument"):
                     raise PermissionDenied
                 rows = rows_from_post(request.POST)
-                if errors:
-                    raise ValueError("\n".join(errors))
-                pdf = build_pdf(rows, classification, client_name)
+                pdf = build_pdf(rows)
                 response = FileResponse(BytesIO(pdf), content_type="application/pdf", as_attachment=False,
                                         filename="ordenes-seleccionadas.pdf")
                 response["Cache-Control"] = "private, no-store"
@@ -183,7 +171,7 @@ def batch_print(request):
                     submitted_count = 0
                 rows = [
                     {field: request.POST.get(f"rows-{index}-{field}", "") for field in
-                     ("shop_order", "parent_code", "quantity", "week", "re", "sequence", "line", "planner", "responsible")}
+                     ("shop_order", "parent_code", "quantity", "week", "re", "sequence", "line", "planner", "responsible", "route_id")}
                     for index in range(submitted_count)
                 ] or blank_rows()
                 for index, row in enumerate(rows, 1):
@@ -191,36 +179,39 @@ def batch_print(request):
                     row["sequence"] = str(index)
                 for field in ("line", "planner", "responsible"):
                     rows[0][field] = request.POST.get(f"common_{field}", "").strip()
-    return render_batch_page(request, rows, errors, classification, notice, client_name)
+    return render_batch_page(request, rows, errors, notice)
 
 
-def render_batch_page(request, rows, errors, classification, notice="", client_name="DAIKIN"):
+def render_batch_page(request, rows, errors, notice=""):
     route_catalog = {}
     route_values = Route.objects.exclude(status=Route.ARCHIVED).exclude(code="").annotate(
         rm_count=Count("part__components", filter=Q(part__components__component__part_type="RM"))
-    ).order_by("source_row", "id").values_list("client__name", "classification", "code", "rm_count")
-    for client, variant, code, count in route_values:
-        route_catalog.setdefault(client, {}).setdefault(variant, {}).setdefault(code, count)
-    client_routes = route_catalog.get(client_name, {})
-    classifications = sorted(variant for variant in client_routes if variant)
-    selected_routes = {code: count for codes in client_routes.values() for code, count in codes.items()} if not classification else {
-        **client_routes.get("", {}), **client_routes.get(classification, {})}
-    parent_codes = sorted(selected_routes, key=str.casefold)
-    re_map = {code.upper(): count for code, count in selected_routes.items()}
+    ).order_by("client__name", "classification", "source_row", "id").values_list(
+        "id", "client__name", "classification", "code", "source_row", "rm_count", "status")
+    for pk, client, variant, code, source_row, count, status in route_values:
+        label = f"{client} · {variant or 'Captura web'}"
+        if source_row:
+            label += f" · fila {source_row}"
+        route_catalog.setdefault(code.strip().upper(), []).append({
+            "id": pk, "code": code, "label": label, "re": count, "status": status})
+    parent_codes = sorted({options[0]["code"] for options in route_catalog.values()}, key=str.casefold)
     warnings = []
     for index, row in enumerate(rows, 1):
         code = row.get("parent_code", "").strip()
-        if not code:
-            continue
-        candidates = Route.objects.filter(code__iexact=code, client__name=client_name)
-        if classification:
-            candidates = candidates.filter(classification=classification)
-        if candidates.exists() and not candidates.filter(status=Route.ACTIVE).exists():
+        options = route_catalog.get(code.upper(), []) if code else []
+        row["route_options"] = options
+        chosen = str(row.get("route_id", ""))
+        if len(options) == 1:
+            chosen = str(options[0]["id"])
+        row["route_id"] = chosen
+        if len(options) > 1 and not chosen:
+            warnings.append(f"Fila {index + 1}: {code} existe en varias rutas. Elige la correcta en esa fila.")
+        selected_option = next((option for option in options if str(option["id"]) == chosen), None)
+        if selected_option and selected_option["status"] != Route.ACTIVE:
             warnings.append(f"Fila {index + 1}: {code} está Por revisar. El PDF será una vista previa no aprobada.")
-    return render(request, "rutas/batch_print.html", {"rows": rows, "errors": errors, "classification": classification,
-        "classifications": classifications, "client_name": client_name, "clients": Client.objects.order_by("name"),
+    return render(request, "rutas/batch_print.html", {"rows": rows, "errors": errors,
         "parent_codes": parent_codes, "route_catalog": route_catalog,
-        "re_map": re_map, "notice": notice, "warnings": warnings})
+        "notice": notice, "warnings": warnings})
 
 
 @login_required

@@ -309,26 +309,62 @@ class DocumentTests(TestCase):
         self.assertNotContains(response, '<th>SHOP ORDER</th>')
         self.assertNotContains(response, '<th>Secuencia</th>')
 
-    def test_client_filter_and_batch_pdf_use_selected_client(self):
+    def test_batch_pdf_mixes_clients_and_requires_choice_for_duplicate_code(self):
         rheem = Client.objects.create(name="RHEEM")
         rheem_route = Route.objects.create(client=rheem, code=self.route.code, status=Route.ACTIVE,
                                            classification="Individuales", description="Ruta RHEEM")
         Operation.objects.create(route=rheem_route, position=1, name="PERFORACIÓN")
+        unique = Route.objects.create(client=rheem, code="RH-UNICO", status=Route.ACTIVE,
+                                      classification="Headers", description="Otra ruta RHEEM")
+        Operation.objects.create(route=unique, position=1, name="CORTE")
         self.user.user_permissions.add(Permission.objects.get(codename="add_schedule"),
                                        Permission.objects.get(codename="add_issueddocument"))
         self.client.force_login(self.user)
-        page = self.client.get(reverse("rutas:list"), {"client": "RHEEM"})
-        self.assertContains(page, "Ruta RHEEM")
-        self.assertNotContains(page, "Pieza inicial")
-        grid = self.client.get(reverse("rutas:batch_print"), {"client": "RHEEM", "classification": "Individuales"})
-        self.assertContains(grid, 'value="RHEEM" selected')
-        response = self.client.post(reverse("rutas:batch_print"), {"action": "print", "client": "RHEEM",
-            "classification": "Individuales", "row_count": "1", "rows-0-shop_order": "RH-1",
-            "rows-0-parent_code": rheem_route.code, "rows-0-quantity": "1", "rows-0-week": "31A",
-            "rows-0-sequence": "1", "common_line": "RHEEM", "common_planner": "Ana",
-            "common_responsible": "Luis"})
+        grid = self.client.get(reverse("rutas:batch_print"))
+        self.assertNotContains(grid, 'name="client"')
+        self.assertNotContains(grid, 'name="classification"')
+        self.assertContains(grid, 'data-route-choice')
+        data = {"action": "print", "row_count": "2", "rows-0-parent_code": self.route.code,
+                "rows-0-quantity": "1", "rows-0-week": "31A", "rows-1-parent_code": unique.code,
+                "rows-1-quantity": "2", "rows-1-week": "32B"}
+        ambiguous = self.client.post(reverse("rutas:batch_print"), data)
+        self.assertContains(ambiguous, "tiene varias rutas")
+        self.assertContains(ambiguous, "DAIKIN")
+        self.assertContains(ambiguous, "RHEEM")
+        data["rows-0-route_id"] = str(unique.pk)
+        invalid = self.client.post(reverse("rutas:batch_print"), data)
+        self.assertContains(invalid, "no corresponde")
+        data["rows-0-route_id"] = str(self.route.pk)
+        response = self.client.post(reverse("rutas:batch_print"), data)
         self.assertEqual(response["Content-Type"], "application/pdf")
-        self.assertIn("RHEEM", PdfReader(io.BytesIO(b"".join(response.streaming_content))).pages[0].extract_text())
+        pdf_text = PdfReader(io.BytesIO(b"".join(response.streaming_content))).pages[0].extract_text()
+        self.assertIn("DAIKIN", pdf_text)
+        self.assertIn("RHEEM", pdf_text)
+        self.assertIn("32B", pdf_text)
+        self.assertEqual(IssuedDocument.objects.count(), 0)
+
+        data["row_count"] = "1"
+        data["rows-0-route_id"] = str(rheem_route.pk)
+        rheem_only = self.client.post(reverse("rutas:batch_print"), data)
+        self.assertIn("RHEEM", PdfReader(io.BytesIO(b"".join(rheem_only.streaming_content))).pages[0].extract_text())
+
+    def test_same_code_in_two_origins_is_selected_per_row(self):
+        other = Route.objects.create(client=self.client_record, code=self.route.code,
+                                     classification="SLP Headers", status=Route.ACTIVE, description="Variante SLP")
+        Operation.objects.create(route=other, position=1, name="DOBLEZ")
+        self.user.user_permissions.add(Permission.objects.get(codename="add_schedule"),
+                                       Permission.objects.get(codename="add_issueddocument"))
+        self.client.force_login(self.user)
+        url = reverse("rutas:batch_print")
+        data = {"action": "print", "row_count": "1", "rows-0-parent_code": self.route.code,
+                "rows-0-quantity": "1", "rows-0-week": "31A"}
+        response = self.client.post(url, data)
+        self.assertContains(response, "tiene varias rutas")
+        self.assertContains(response, "SLP Headers")
+        data["rows-0-route_id"] = str(other.pk)
+        selected = self.client.post(url, data)
+        self.assertEqual(selected["Content-Type"], "application/pdf")
+        self.assertIn("DOBLEZ", PdfReader(io.BytesIO(b"".join(selected.streaming_content))).pages[0].extract_text())
 
     def test_excel_upload_and_grid_print_do_not_save_orders(self):
         second = Route.objects.create(client=self.client_record, code="RM-B", status=Route.ACTIVE)
