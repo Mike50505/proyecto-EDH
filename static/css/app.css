@@ -264,3 +264,6 @@
 .page-heading .actions form{display:flex;align-items:center;gap:10px}
 @media(max-width:750px){.footer-actions,.page-heading .actions,.page-heading .actions form{flex-wrap:wrap}.batch-actions label{justify-content:space-between}}
 :root[data-theme="dark"] .batch-actions label,:root[data-theme="dark"] .footer-actions label,:root[data-theme="dark"] .page-heading .actions label{color:var(--text-secondary)}
+.batch-actions,.footer-actions,.page-heading .actions form{flex-wrap:wrap}
+.batch-actions select[name="label_mode"],.footer-actions select[name="label_mode"],.page-heading select[name="label_mode"]{min-width:230px;max-width:260px}
+@media(max-width:750px){.batch-actions label,.footer-actions label,.page-heading .actions label{align-items:stretch;flex-direction:column;white-space:normal}.batch-actions select[name="label_mode"],.footer-actions select[name="label_mode"],.page-heading select[name="label_mode"]{min-width:0;max-width:100%;width:100%}}

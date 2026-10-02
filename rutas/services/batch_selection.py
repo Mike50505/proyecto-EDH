@@ -7,7 +7,7 @@ from openpyxl import load_workbook
 from django.utils import timezone
 
 from rutas.models import Route
-from rutas.services.documents import preview_labels_for_line, render_pdf
+from rutas.services.documents import preview_labels_for_line, render_pdf, validate_label_mode
 
 HEADERS = ("ITEM PADRE", "CANTIDAD", "SEMANA")
 PREVIOUS_HEADERS = ("ITEM PADRE", "CANTIDAD", "SEMANA", "RE")
@@ -85,8 +85,9 @@ def rows_from_post(post):
     return rows
 
 
-def build_pdf(rows, template_key="mesa-two-labels-v1"):
+def build_pdf(rows, template_key="mesa-two-labels-v1", label_mode="components_only"):
     """Resolve each row against the whole catalog and render entirely in memory."""
+    validate_label_mode(label_mode)
     first = rows[0]
     defaults = {key: first.get(key, "") for key in ("week", "line", "planner", "responsible")}
     labels = []
@@ -133,7 +134,7 @@ def build_pdf(rows, template_key="mesa-two-labels-v1"):
         clients.add(route.client.name)
         line = SimpleNamespace(route_id=route.pk, shop_order=effective["week"], quantity=quantity, position=sequence)
         try:
-            route_labels, _, needs_review = preview_labels_for_line(line)
+            route_labels, _, needs_review = preview_labels_for_line(line, label_mode)
         except ValueError as exc:
             errors.append(f"Fila {display_row}: {exc}")
             continue
@@ -150,6 +151,7 @@ def build_pdf(rows, template_key="mesa-two-labels-v1"):
         "planner": defaults["planner"], "responsible": defaults["responsible"],
         "issue_date": timezone.localdate().isoformat(),
         "ship_date": "", "copies": 1, "lines": [], "labels": labels,
+        "label_mode": label_mode,
         "preview_status": "VISTA PREVIA · RUTAS POR REVISAR · NO APROBADA" if has_unapproved_routes else "SELECCIÓN TEMPORAL · NO GUARDADA",
     }
     return render_pdf(snapshot, template_key)

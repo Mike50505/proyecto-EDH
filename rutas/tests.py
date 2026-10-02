@@ -12,7 +12,9 @@ from pypdf import PdfReader
 
 from rutas.forms import ScheduleLineForm
 from rutas.models import BOMItem, Client, ImportIssue, ImportRun, IssuedDocument, Operation, Part, Route, Schedule, ScheduleLine, SourceBook
-from rutas.services.documents import CLASSIC_TEMPLATE, MODERN_TEMPLATE, issue_schedule, render_pdf
+from rutas.services.documents import (CLASSIC_TEMPLATE, LABEL_MODE_COMPONENTS_ONLY,
+    LABEL_MODE_INCLUDE_PARENT, LABEL_MODE_ORIGINAL, MODERN_TEMPLATE, issue_schedule, render_pdf)
+from rutas.services.batch_selection import build_pdf
 from rutas.services.importer import ImportErrorDetailed, import_workbook
 from rutas.services.reconciliation import reconcile_all
 
@@ -225,6 +227,8 @@ class DocumentTests(TestCase):
     def test_invalid_design_does_not_issue_document(self):
         with self.assertRaisesRegex(ValueError, "diseño de impresión válido"):
             issue_schedule(self.schedule, self.user, "otro")
+        with self.assertRaisesRegex(ValueError, "opción de etiquetas válida"):
+            issue_schedule(self.schedule, self.user, label_mode="otro")
         self.assertEqual(IssuedDocument.objects.count(), 0)
 
     def test_document_download_checks_server_permission(self):
@@ -270,7 +274,7 @@ class DocumentTests(TestCase):
         unused = Part.objects.create(client=self.client_record, code="BR-A", part_type="BR")
         BOMItem.objects.create(parent=parent_part, component=unused, position=3, quantity_per=Decimal("4"))
 
-        document = issue_schedule(self.schedule, self.user)
+        document = issue_schedule(self.schedule, self.user, label_mode=LABEL_MODE_ORIGINAL)
         labels = document.snapshot["labels"]
         self.assertEqual([label["component_code"] for label in labels], ["RM-A", "RM-B"])
         self.assertEqual([label["label_index"] for label in labels], [2, 3])
@@ -278,6 +282,39 @@ class DocumentTests(TestCase):
         self.assertEqual([label["quantity"] for label in labels], ["4", "6"])
         self.assertEqual(len(PdfReader(io.BytesIO(document.pdf.open("rb").read())).pages), 1)
         self.assertEqual(ScheduleLineForm(initial={"route": self.route.pk}).fields["re_count"].initial, 2)
+
+        compact = issue_schedule(self.schedule, self.user)
+        self.assertEqual(compact.snapshot["label_mode"], LABEL_MODE_COMPONENTS_ONLY)
+        self.assertEqual([label["label_index"] for label in compact.snapshot["labels"]], [1, 2])
+        self.assertEqual([label["label_total"] for label in compact.snapshot["labels"]], [2, 2])
+        self.assertEqual([label["re_count"] for label in compact.snapshot["labels"]], [2, 2])
+        self.assertEqual(len(PdfReader(io.BytesIO(compact.pdf.open("rb").read())).pages), 1)
+
+        with_parent = issue_schedule(self.schedule, self.user, MODERN_TEMPLATE, LABEL_MODE_INCLUDE_PARENT)
+        labels = with_parent.snapshot["labels"]
+        self.assertEqual([label["component_code"] for label in labels], [self.route.code, "RM-A", "RM-B"])
+        self.assertEqual([label["label_index"] for label in labels], [1, 2, 3])
+        self.assertEqual([label["label_total"] for label in labels], [3, 3, 3])
+        self.assertEqual([label["quantity"] for label in labels], ["2", "4", "6"])
+        self.assertEqual([label["re_count"] for label in labels], [2, 2, 2])
+        self.assertTrue(labels[0]["is_parent"])
+        self.assertEqual(labels[0]["dimensions"], {})
+        pages = PdfReader(io.BytesIO(with_parent.pdf.open("rb").read())).pages
+        self.assertEqual(len(pages), 2)
+        self.assertIn("ETIQUETA DE ENSAMBLE", pages[0].extract_text())
+        self.assertIn("CORTE", pages[0].extract_text())
+        classic_parent = issue_schedule(self.schedule, self.user, CLASSIC_TEMPLATE, LABEL_MODE_INCLUDE_PARENT)
+        self.assertIn("ETIQUETA DE ENSAMBLE", PdfReader(io.BytesIO(classic_parent.pdf.open("rb").read())).pages[0].extract_text())
+
+        selection = [{"parent_code": self.route.code, "route_id": str(self.route.pk),
+                      "quantity": "2", "week": "31A", "line": "", "planner": "", "responsible": ""}]
+        for mode, expected in ((LABEL_MODE_ORIGINAL, "2 DE 3"),
+                               (LABEL_MODE_COMPONENTS_ONLY, "1 DE 2"),
+                               (LABEL_MODE_INCLUDE_PARENT, "1 DE 3")):
+            pdf_text = PdfReader(io.BytesIO(build_pdf(selection, MODERN_TEMPLATE, mode))).pages[0].extract_text()
+            self.assertIn(expected, pdf_text)
+        with self.assertRaisesRegex(ValueError, "opción de etiquetas válida"):
+            build_pdf(selection, label_mode="invalid")
 
     def test_parent_requires_unique_active_component_route(self):
         parent_part = Part.objects.create(client=self.client_record, code=self.route.code, part_type="FP")
@@ -327,7 +364,8 @@ class DocumentTests(TestCase):
         self.assertEqual(Schedule.objects.count(), 1)
 
     def test_batch_grid_suggests_parent_items(self):
-        self.user.user_permissions.add(Permission.objects.get(codename="add_schedule"))
+        self.user.user_permissions.add(Permission.objects.get(codename="add_schedule"),
+                                       Permission.objects.get(codename="add_issueddocument"))
         self.client.force_login(self.user)
         response = self.client.get(reverse("rutas:batch_print"))
         self.assertContains(response, '<datalist id="parent-code-options">')
@@ -335,6 +373,10 @@ class DocumentTests(TestCase):
         self.assertContains(response, 'list="parent-code-options" data-parent-code autocomplete="off"')
         self.assertNotContains(response, '<th>SHOP ORDER</th>')
         self.assertNotContains(response, '<th>Secuencia</th>')
+        self.assertContains(response, 'name="label_mode"')
+        self.assertContains(response, 'value="components_only" selected')
+        self.assertContains(response, 'value="include_parent"')
+        self.assertContains(response, 'value="components_only"')
 
     def test_batch_pdf_mixes_clients_and_requires_choice_for_duplicate_code(self):
         rheem = Client.objects.create(name="RHEEM")
@@ -496,6 +538,7 @@ class DocumentTests(TestCase):
         for label in ("CANTIDAD", "SEMANA", "RE (calculado)", "Secuencia", "LINEA", "PLANNER", "RESPONSABLE"):
             self.assertContains(page, label)
         self.assertContains(page, "Generar PDF de todas")
+        self.assertContains(page, 'name="label_mode"')
         self.assertContains(page, f'value="{second.pk}" selected')
 
         data = {"client": self.client_record.pk, "week": "31A", "line": "L1", "planner": "Ana",

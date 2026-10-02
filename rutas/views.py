@@ -17,7 +17,7 @@ from django.views.decorators.http import require_POST
 
 from rutas.forms import FamilyForm, ImportForm, OperationFormSet, RouteForm, ScheduleForm, ScheduleLineFormSet
 from rutas.models import Client, ImportIssue, ImportRun, IssuedDocument, Operation, Part, Route, RouteChange, Schedule, ScheduleLine
-from rutas.services.documents import CLASSIC_TEMPLATE, PRINT_TEMPLATES, issue_schedule, make_label, render_pdf, validate_print_template
+from rutas.services.documents import CLASSIC_TEMPLATE, LABEL_MODES, LABEL_MODE_COMPONENTS_ONLY, PRINT_TEMPLATES, issue_schedule, make_label, render_pdf, validate_print_template
 from rutas.services.batch_selection import blank_rows, build_pdf, read_excel, rows_from_post
 from rutas.services.importer import ImportErrorDetailed, import_workbook
 from rutas.services.source_catalog import CLIENT_VARIANTS
@@ -146,6 +146,7 @@ def batch_print(request):
     errors = []
     notice = ""
     template_key = request.POST.get("template_key", CLASSIC_TEMPLATE)
+    label_mode = request.POST.get("label_mode", LABEL_MODE_COMPONENTS_ONLY)
     if request.method == "POST":
         action = request.POST.get("action")
         try:
@@ -160,7 +161,7 @@ def batch_print(request):
                 if not request.user.has_perm("rutas.add_issueddocument"):
                     raise PermissionDenied
                 rows = rows_from_post(request.POST)
-                pdf = build_pdf(rows, template_key)
+                pdf = build_pdf(rows, template_key, label_mode)
                 response = FileResponse(BytesIO(pdf), content_type="application/pdf", as_attachment=False,
                                         filename="ordenes-seleccionadas.pdf")
                 response["Cache-Control"] = "private, no-store"
@@ -184,10 +185,11 @@ def batch_print(request):
                     row["sequence"] = str(index)
                 for field in ("line", "planner", "responsible"):
                     rows[0][field] = request.POST.get(f"common_{field}", "").strip()
-    return render_batch_page(request, rows, errors, notice, template_key)
+    return render_batch_page(request, rows, errors, notice, template_key, label_mode)
 
 
-def render_batch_page(request, rows, errors, notice="", template_key=CLASSIC_TEMPLATE):
+def render_batch_page(request, rows, errors, notice="", template_key=CLASSIC_TEMPLATE,
+                      label_mode=LABEL_MODE_COMPONENTS_ONLY):
     route_catalog = {}
     route_values = Route.objects.exclude(status=Route.ARCHIVED).exclude(code="").annotate(
         rm_count=Count("part__components", filter=Q(part__components__component__part_type="RM"))
@@ -217,7 +219,7 @@ def render_batch_page(request, rows, errors, notice="", template_key=CLASSIC_TEM
     return render(request, "rutas/batch_print.html", {"rows": rows, "errors": errors,
         "parent_codes": parent_codes, "route_catalog": route_catalog,
         "notice": notice, "warnings": warnings, "print_templates": PRINT_TEMPLATES,
-        "template_key": template_key})
+        "template_key": template_key, "label_modes": LABEL_MODES, "label_mode": label_mode})
 
 
 @login_required
@@ -317,6 +319,7 @@ def schedule_create(request):
     if request.method == "POST" and request.POST.get("action") == "print_all" and not request.user.has_perm("rutas.add_issueddocument"):
         raise PermissionDenied
     template_key = request.POST.get("template_key", CLASSIC_TEMPLATE)
+    label_mode = request.POST.get("label_mode", LABEL_MODE_COMPONENTS_ONLY)
     schedule = Schedule(created_by=request.user)
     selected = list(Route.objects.filter(pk__in=request.session.get("selected_route_ids", [])).order_by("code", "id")) if request.method == "GET" else []
     form = ScheduleForm(request.POST or None, instance=schedule, initial={"client": selected[0].client_id} if selected else None)
@@ -333,6 +336,8 @@ def schedule_create(request):
             form.add_error(None, "Todas las rutas deben pertenecer al cliente seleccionado.")
         elif request.POST.get("action") == "print_all" and template_key not in dict(PRINT_TEMPLATES):
             form.add_error(None, "Selecciona un diseño de impresión válido.")
+        elif request.POST.get("action") == "print_all" and label_mode not in dict(LABEL_MODES):
+            form.add_error(None, "Selecciona una opción de etiquetas válida.")
         else:
             with transaction.atomic():
                 schedule = form.save()
@@ -341,14 +346,15 @@ def schedule_create(request):
             request.session.pop("selected_route_ids", None)
             if request.POST.get("action") == "print_all":
                 try:
-                    document = issue_schedule(schedule, request.user, template_key)
+                    document = issue_schedule(schedule, request.user, template_key, label_mode)
                 except ValueError as exc:
                     messages.error(request, str(exc))
                     return redirect("rutas:schedule_detail", pk=schedule.pk)
                 return redirect("rutas:document", pk=document.pk)
             return redirect("rutas:schedule_detail", pk=schedule.pk)
     return render(request, "rutas/schedule_edit.html", {"form": form, "formset": formset,
-        "re_counts": re_counts, "print_templates": PRINT_TEMPLATES, "template_key": template_key})
+        "re_counts": re_counts, "print_templates": PRINT_TEMPLATES, "template_key": template_key,
+        "label_modes": LABEL_MODES, "label_mode": label_mode})
 
 
 @login_required
@@ -363,7 +369,7 @@ def schedule_detail(request, pk):
             re_count = line.route.part.components.filter(component__part_type="RM").count()
         previews.append((line, components, re_count))
     return render(request, "rutas/schedule_detail.html", {"schedule": schedule, "previews": previews,
-        "print_templates": PRINT_TEMPLATES})
+        "print_templates": PRINT_TEMPLATES, "label_modes": LABEL_MODES})
 
 
 @login_required
@@ -372,7 +378,8 @@ def schedule_detail(request, pk):
 def schedule_issue(request, pk):
     schedule = get_object_or_404(Schedule, pk=pk)
     try:
-        document = issue_schedule(schedule, request.user, request.POST.get("template_key", CLASSIC_TEMPLATE))
+        document = issue_schedule(schedule, request.user, request.POST.get("template_key", CLASSIC_TEMPLATE),
+                                  request.POST.get("label_mode", LABEL_MODE_COMPONENTS_ONLY))
     except ValueError as exc:
         messages.error(request, str(exc))
         return redirect("rutas:schedule_detail", pk=pk)

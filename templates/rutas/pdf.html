@@ -43,18 +43,18 @@
     <table class="heading"><tr>
       <td class="logo"><img src="{{ logo_uri }}" alt="MESA Ramos Arizpe"></td>
       <td class="title"><strong>EDH</strong><span>Especificación Dimensional y Herramental - Macro</span></td>
-      <td class="cut">*** ETIQUETA DE CORTE ***</td>
+      <td class="cut">{% if label.is_parent %}*** ETIQUETA DE ENSAMBLE ***{% else %}*** ETIQUETA DE CORTE ***{% endif %}</td>
     </tr></table>
     <table class="meta">
       <colgroup><col style="width:9%"><col style="width:25%"><col style="width:15%"><col style="width:19%"><col style="width:13%"><col style="width:19%"></colgroup>
       <tr><td class="name">Cliente</td><td class="value">{{ label.client|default:data.client }}</td><td class="name">Fecha de emisión</td><td class="value">{{ data.issue_date }}</td><td class="name">Fecha embarque</td><td class="value">{{ data.ship_date|default:'—' }}</td></tr>
       <tr><td class="name">No. Parte</td><td class="value">{{ label.parent_code }} <span class="secondary">{{ label.label_index }} DE {{ label.label_total }}</span></td><td class="name">CANTIDAD / Pzas</td><td class="value">{{ label.quantity }}</td><td class="name">Shop Order</td><td class="value">{{ label.shop_order }}</td></tr>
       <tr><td class="name">Descripción</td><td class="value">{{ label.parent_description }}</td><td class="name">Planner</td><td class="value">{{ label.planner|default:data.planner }}</td><td class="name">Responsable</td><td class="value">{{ label.responsible|default:data.responsible }}</td></tr>
-      <tr><td class="name">Componente</td><td class="value">{{ label.component_code }}</td><td class="name">Semana</td><td class="value">{{ label.week|default:data.week }}</td><td class="name">Línea</td><td class="value">{{ label.line|default:data.line }}</td></tr>
+      <tr><td class="name">{% if label.is_parent %}Ensamble padre{% else %}Componente{% endif %}</td><td class="value">{{ label.component_code }}</td><td class="name">Semana</td><td class="value">{{ label.week|default:data.week }}</td><td class="name">Línea</td><td class="value">{{ label.line|default:data.line }}</td></tr>
       <tr><td class="name">Descripción</td><td class="value">{{ label.component_description }}</td><td class="name">Secuencia / RE</td><td class="value">{{ label.sequence }} / {{ label.re_count }}</td><td class="name">Copia</td><td class="value">{{ label.copy_number }} DE {{ data.copies }}</td></tr>
-      <tr><td class="name">Desarrollo</td><td class="value" colspan="5">OD {{ label.dimensions.od|default:'—' }} &nbsp; / &nbsp; Pared {{ label.dimensions.wall|default:'—' }} &nbsp; / &nbsp; Desarrollo {{ label.dimensions.development|default:'—' }}{% if label.segments > 1 %} &nbsp; · &nbsp; Continuación {{ label.segment }} de {{ label.segments }}{% endif %}</td></tr>
+      <tr><td class="name">Desarrollo</td><td class="value" colspan="5">{% if label.is_parent %}Ensamble padre · sin dimensiones de componente{% else %}OD {{ label.dimensions.od|default:'—' }} &nbsp; / &nbsp; Pared {{ label.dimensions.wall|default:'—' }} &nbsp; / &nbsp; Desarrollo {{ label.dimensions.development|default:'—' }}{% endif %}{% if label.segments > 1 %} &nbsp; · &nbsp; Continuación {{ label.segment }} de {{ label.segments }}{% endif %}</td></tr>
     </table>
-    <div class="units">Dimensiones originales de Familias; confirmar unidades en el origen</div>
+    <div class="units">{% if label.is_parent %}{% if label.parent_operations_missing %}Ensamble padre sin operaciones registradas; espacios disponibles para anotaciones{% else %}Ruta del ensamble padre{% endif %}{% else %}Dimensiones originales de Familias; confirmar unidades en el origen{% endif %}</div>
     <table class="operations">
       <colgroup><col style="width:2.5%"><col style="width:18%"><col style="width:10%"><col style="width:19%"><col style="width:24%"><col style="width:9%"><col style="width:8%"><col style="width:9.5%"></colgroup>
       <thead><tr><th>#</th><th>Ruta</th><th>Máquina</th><th>Inspección</th><th>Herramental</th><th>Cantidad</th><th>Fecha</th><th>No. operador</th></tr></thead>

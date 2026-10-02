@@ -67,7 +67,7 @@
   <table class="masthead"><tr>
     <td class="brand"><img src="{{ logo_uri }}" alt="MESA Ramos Arizpe"></td>
     <td class="edition"><strong>Ruta de proceso</strong>EDH · Especificación Dimensional y Herramental</td>
-    <td class="tag">ETIQUETA DE CORTE &nbsp; / &nbsp; {{ label.label_index }} DE {{ label.label_total }}</td>
+    <td class="tag">{% if label.is_parent %}ETIQUETA DE ENSAMBLE{% else %}ETIQUETA DE CORTE{% endif %} &nbsp; / &nbsp; {{ label.label_index }} DE {{ label.label_total }}</td>
   </tr></table>
 
   <table class="hero"><tr>
@@ -79,7 +79,7 @@
 
   <table class="body-grid"><tr>
     <td class="rail"><div class="rail-card">
-      <span class="eyebrow">COMPONENTE</span><strong class="component">{{ label.component_code }}</strong><span class="description">{{ label.component_description|default:'—' }}</span>
+      <span class="eyebrow">{% if label.is_parent %}ENSAMBLE PADRE{% else %}COMPONENTE{% endif %}</span><strong class="component">{{ label.component_code }}</strong><span class="description">{{ label.component_description|default:'—' }}</span>
       <div class="rail-rule"></div>
       <table class="facts">
         <tr><td><span class="fact-key">SHOP ORDER</span><span class="fact-value">{{ label.shop_order }}</span></td><td><span class="fact-key">SECUENCIA</span><span class="fact-value">{{ label.sequence }}</span></td></tr>
@@ -88,10 +88,10 @@
         <tr><td><span class="fact-key">EMISIÓN</span><span class="fact-value">{{ data.issue_date }}</span></td><td><span class="fact-key">EMBARQUE</span><span class="fact-value">{{ data.ship_date|default:'—' }}</span></td></tr>
         <tr><td><span class="fact-key">COPIA</span><span class="fact-value">{{ label.copy_number }} de {{ data.copies }}</span></td><td><span class="fact-key">PÁGINA</span><span class="fact-value">{{ label.segment }} de {{ label.segments }}</span></td></tr>
       </table>
-      <div class="dimensions"><b>DIMENSIONES ORIGINALES</b>OD {{ label.dimensions.od|default:'—' }} &nbsp; · &nbsp; Pared {{ label.dimensions.wall|default:'—' }}<br>Desarrollo {{ label.dimensions.development|default:'—' }}<br>Confirmar unidades en el origen</div>
+      <div class="dimensions">{% if label.is_parent %}<b>RUTA DEL ENSAMBLE PADRE</b>Sin dimensiones de componente{% else %}<b>DIMENSIONES ORIGINALES</b>OD {{ label.dimensions.od|default:'—' }} &nbsp; · &nbsp; Pared {{ label.dimensions.wall|default:'—' }}<br>Desarrollo {{ label.dimensions.development|default:'—' }}<br>Confirmar unidades en el origen{% endif %}</div>
     </div></td>
     <td class="process">
-      <div class="process-heading"><span class="title">Operaciones</span><span class="count">15 espacios de registro</span></div>
+      <div class="process-heading"><span class="title">Operaciones</span><span class="count">{% if label.parent_operations_missing %}Sin operaciones registradas para el ensamble{% else %}15 espacios de registro{% endif %}</span></div>
       <table class="operations">
         <colgroup><col style="width:4%"><col style="width:22%"><col style="width:13%"><col style="width:18%"><col style="width:19%"><col style="width:8%"><col style="width:7%"><col style="width:9%"></colgroup>
         <thead><tr><th>#</th><th>Ruta</th><th>Máquina</th><th>Inspección</th><th>Herramental</th><th>Cant.</th><th>Fecha</th><th>Operador</th></tr></thead>

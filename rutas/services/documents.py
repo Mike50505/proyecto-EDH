@@ -21,12 +21,39 @@ TEMPLATE_FILES = {
     CLASSIC_TEMPLATE: "rutas/pdf.html",
     MODERN_TEMPLATE: "rutas/pdf_modern.html",
 }
+LABEL_MODE_ORIGINAL = "original"
+LABEL_MODE_INCLUDE_PARENT = "include_parent"
+LABEL_MODE_COMPONENTS_ONLY = "components_only"
+LABEL_MODES = (
+    (LABEL_MODE_COMPONENTS_ONLY, "Solo componentes, desde 1"),
+    (LABEL_MODE_INCLUDE_PARENT, "Incluir etiqueta del ensamble padre"),
+    (LABEL_MODE_ORIGINAL, "Original (reservar 1 para el padre)"),
+)
 
 
 def validate_print_template(template_key):
     if template_key not in TEMPLATE_FILES:
         raise ValueError("Selecciona un diseño de impresión válido.")
     return template_key
+
+
+def validate_label_mode(label_mode):
+    if label_mode not in dict(LABEL_MODES):
+        raise ValueError("Selecciona una opción de etiquetas válida.")
+    return label_mode
+
+
+def component_numbering(position, rm_count, label_mode):
+    if label_mode == LABEL_MODE_COMPONENTS_ONLY:
+        return position, rm_count
+    return position + 1, rm_count + 1
+
+
+def parent_label(parent, line, rm_count):
+    label = make_label(parent, parent, None, line, line.quantity, 1, rm_count + 1)
+    label["is_parent"] = True
+    label["parent_operations_missing"] = not bool(label["operations"])
+    return label
 
 
 def ensure_emittable(route):
@@ -66,16 +93,17 @@ def snapshot_line(line):
     return base
 
 
-def labels_for_line(line):
-    """Etiqueta1: one label per RM, with parent occupying position 1 in N DE M."""
+def labels_for_line(line, label_mode=LABEL_MODE_COMPONENTS_ONLY):
+    """Create optional parent label and component labels in the selected numbering mode."""
+    validate_label_mode(label_mode)
     parent = Route.objects.select_related("part", "source").prefetch_related("operations", "part__components__component").get(pk=line.route_id)
     ensure_emittable(parent)
     rm_items = [item for item in parent.part.components.all() if item.component.part_type == "RM"] if parent.part else []
     if not rm_items:
         part = parent.part
         return [make_label(parent, parent, part, line, line.quantity, 1, 1)]
-    labels = []
-    for index, bom in enumerate(rm_items, 2):
+    labels = [parent_label(parent, line, len(rm_items))] if label_mode == LABEL_MODE_INCLUDE_PARENT else []
+    for position, bom in enumerate(rm_items, 1):
         candidates = Route.objects.filter(code=bom.component.code, client=parent.client, status=Route.ACTIVE)
         if parent.source_id:
             candidates = candidates.filter(source_id=parent.source_id)
@@ -86,12 +114,14 @@ def labels_for_line(line):
             raise ValueError(f"El componente {bom.component.code} necesita una ruta activa única en {parent.classification}.")
         child = child_routes[0]
         ensure_emittable(child)
-        labels.append(make_label(parent, child, bom.component, line, line.quantity * bom.quantity_per, index, len(rm_items) + 1))
+        index, total = component_numbering(position, len(rm_items), label_mode)
+        labels.append(make_label(parent, child, bom.component, line, line.quantity * bom.quantity_per, index, total))
     return labels
 
 
-def preview_labels_for_line(line):
+def preview_labels_for_line(line, label_mode=LABEL_MODE_COMPONENTS_ONLY):
     """Reproduce la primera coincidencia de la macro para una vista previa no aprobada."""
+    validate_label_mode(label_mode)
     parent = Route.objects.select_related("part", "source").prefetch_related(
         "operations", "part__components__component"
     ).get(pk=line.route_id)
@@ -105,8 +135,8 @@ def preview_labels_for_line(line):
     if not rm_items:
         labels = [make_label(parent, parent, parent.part, line, line.quantity, 1, 1)]
     else:
-        labels = []
-        for index, bom in enumerate(rm_items, 2):
+        labels = [parent_label(parent, line, len(rm_items))] if label_mode == LABEL_MODE_INCLUDE_PARENT else []
+        for position, bom in enumerate(rm_items, 1):
             candidates = Route.objects.filter(code=bom.component.code, client=parent.client).exclude(
                 status=Route.ARCHIVED
             )
@@ -120,8 +150,9 @@ def preview_labels_for_line(line):
             child = choices[0]
             if child.status != Route.ACTIVE or len(choices) > 1:
                 needs_review = True
+            index, total = component_numbering(position, len(rm_items), label_mode)
             label = make_label(parent, child, bom.component, line, line.quantity * bom.quantity_per,
-                               index, len(rm_items) + 1)
+                               index, total)
             if len(choices) > 1:
                 label["preview_note"] = f"Primera coincidencia: Ruta fila {child.source_row}; existe otra fila {choices[1].source_row}."
                 notes.append(f"{bom.component.code}: se usó Ruta fila {child.source_row}; también existe fila {choices[1].source_row}.")
@@ -133,7 +164,7 @@ def preview_labels_for_line(line):
 
 
 def make_label(parent, route, component, line, quantity, index, total):
-    re_count = total - 1 if total > 1 else (parent.part.components.filter(component__part_type="RM").count() if parent.part_id else 0)
+    re_count = parent.part.components.filter(component__part_type="RM").count() if parent.part_id else 0
     return {"parent_code": parent.code, "parent_description": parent.description,
             "component_code": component.code if component else route.code,
             "component_description": component.description if component else route.description,
@@ -175,8 +206,9 @@ def render_pdf(snapshot, template_key=CLASSIC_TEMPLATE):
     return HTML(string=html).write_pdf()
 
 
-def issue_schedule(schedule, user, template_key=CLASSIC_TEMPLATE):
+def issue_schedule(schedule, user, template_key=CLASSIC_TEMPLATE, label_mode=LABEL_MODE_COMPONENTS_ONLY):
     validate_print_template(template_key)
+    validate_label_mode(label_mode)
     lines = list(schedule.lines.select_related("route").order_by("position", "id"))
     if not lines:
         raise ValueError("Agregue al menos una partida.")
@@ -184,7 +216,8 @@ def issue_schedule(schedule, user, template_key=CLASSIC_TEMPLATE):
                 "planner": schedule.planner, "responsible": schedule.responsible,
                 "issue_date": schedule.issue_date.isoformat(), "ship_date": schedule.ship_date.isoformat() if schedule.ship_date else "",
                 "lines": [snapshot_line(line) for line in lines],
-                "labels": [label for line in lines for label in labels_for_line(line)],
+                "labels": [label for line in lines for label in labels_for_line(line, label_mode)],
+                "label_mode": label_mode,
                 "format_status": "Composición cotejada con captura; escala física pendiente"}
     pdf_bytes = render_pdf(snapshot, template_key)
     digest = hashlib.sha256(pdf_bytes).hexdigest()

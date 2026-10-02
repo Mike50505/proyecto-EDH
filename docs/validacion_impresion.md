@@ -6,11 +6,11 @@ La captura `Captura de pantalla 2026-09-29 113422` muestra dos etiquetas apilada
 
 ## Implementación y comprobación
 
-El PDF usa hoja carta horizontal con dos etiquetas por página. Cada RM del padre produce una etiqueta con su ruta de la misma fuente, cantidad programada multiplicada por cantidad por unidad y contador `N DE M`. Una ruta sin RM produce una etiqueta. Las copias repiten las hojas sin multiplicar piezas. Las operaciones que exceden diez se continúan en otra etiqueta con contexto y un total de 15 filas para escritura manual.
+El PDF usa hoja carta horizontal con dos etiquetas por página. Cada RM del padre produce una etiqueta con su ruta de la misma fuente y cantidad programada multiplicada por cantidad por unidad. La opción Original conserva el contador `2 DE 3` y `3 DE 3` de la captura; la opción Solo componentes los numera `1 DE 2` y `2 DE 2`; la opción Incluir padre agrega primero una etiqueta del ensamble sin dimensiones de componente y usa `1 DE 3`, `2 DE 3`, `3 DE 3`. Una ruta sin RM produce una etiqueta. Las copias repiten las hojas sin multiplicar piezas. Las operaciones que exceden diez se continúan en otra etiqueta con contexto y un total de 15 filas para escritura manual.
 
 La muestra `output/pdf/ejemplo_provisional_daikin.pdf` usa los datos reales de las rutas de la captura y una orden `PRUEBA-NO-PRODUCCION`. Se renderizó a PNG y se inspeccionó: una página, dos etiquetas completas, sin cortes visibles. Las pruebas Django cubren cantidad, numeración, exclusión de BR, páginas por copia, instantánea histórica y bloqueo de rutas de componente ambiguas o sin aprobar.
 
-La captura no aporta medidas físicas ni configuración de impresora. Por eso la escala de impresión, márgenes y zonas de corte siguen pendientes de cotejo con una hoja impresa al 100 %. También faltan muestras aprobadas de las demás variantes y la regla de la etiqueta 1 DE 3 del padre. El PDF lleva aviso de composición provisional para evitar confundir la muestra con un formato aprobado de producción.
+La captura no aporta medidas físicas ni configuración de impresora. Por eso la escala de impresión, márgenes y zonas de corte siguen pendientes de cotejo con una hoja impresa al 100 %. También faltan muestras aprobadas de las demás variantes y la aprobación física de la etiqueta 1 DE 3 del padre. El PDF lleva aviso de composición provisional para evitar confundir la muestra con un formato aprobado de producción.
 
 ## Correspondencia de campos
 
