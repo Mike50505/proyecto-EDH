@@ -1,0 +1,9 @@
+<section class="component-editor space-top" data-component-editor {% if row.form.DELETE.value %}hidden{% endif %}>
+  <div class="card component-details"><div class="section-head"><div><p class="eyebrow">HIJO DEL ITEM PADRE</p><h2>Componente {{ component_number }}</h2></div><button type="button" class="button secondary" data-remove-component>Quitar componente</button></div>
+    <div hidden>{{ row.form.DELETE }}</div>
+    {% for hidden in row.form.hidden_fields %}{{ hidden }}{% endfor %}
+    {% if row.form.non_field_errors %}<div class="message error">{{ row.form.non_field_errors }}</div>{% endif %}
+    <div class="form-grid space-top">{% for field in row.form.visible_fields %}{% if field.name != 'DELETE' %}<label>{{ field.label }} {{ field }}{% if field.errors %}<span class="field-error">{{ field.errors }}</span>{% endif %}</label>{% endif %}{% endfor %}</div>
+  </div>
+  {% include 'rutas/operation_editor.html' with formset=row.operations %}
+</section>

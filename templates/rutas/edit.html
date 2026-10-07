@@ -8,7 +8,9 @@
     <button type="button" data-editor-switch="form" aria-pressed="{% if request.POST.editor_mode == 'form' %}true{% else %}false{% endif %}">Formulario</button>
   </div>
 </div>
-<form method="post" class="editor" data-route-editor>{% csrf_token %}{{ form.version }}
+<form method="post" class="editor" data-route-editor>{% csrf_token %}{{ form.version }}{% if not route_review_visible %}{{ form.status }}{% endif %}
+  <datalist id="default-processes">{% for process in default_processes %}<option value="{{ process }}"></option>{% endfor %}</datalist>
+  {% if universe_piece %}<input type="hidden" name="universe_id" value="{{ universe_piece.pk }}"><div class="message">Paso 2 de 2. Nueva ruta vinculada a {{ universe_piece.part_number }} · {{ universe_piece.customer }}. Captura sus operaciones y revisa las características antes de guardar. <a href="{% url 'rutas:create' %}">Elegir otra pieza</a></div>{% endif %}
   <input type="hidden" name="editor_mode" value="{% if request.POST.editor_mode == 'form' %}form{% else %}sheet{% endif %}" data-editor-mode-input>
   {% if form.non_field_errors %}<div class="message error">{{ form.non_field_errors }}</div>{% endif %}
   {% if family_form %}
@@ -27,10 +29,10 @@
     </div></div>
   </section>
   {% else %}
-  <section class="card route-data-editor" data-route-data-editor data-editor-mode="{% if request.POST.editor_mode == 'form' %}form{% else %}sheet{% endif %}">
-    <div class="section-head"><h2>Configuración de la ruta</h2><span class="muted">Cliente, pieza vinculada y estado</span></div>
+  <section class="card route-data-editor" data-route-data-editor data-review-visible="{{ route_review_visible|yesno:'true,false' }}" data-editor-mode="{% if request.POST.editor_mode == 'form' %}form{% else %}sheet{% endif %}">
+    <div class="section-head"><h2>Configuración de la ruta</h2><span class="muted">Cliente y pieza vinculada</span></div>
     <p class="hint" data-route-data-hint>Para pegar desde Excel, copia una fila en este orden: Cliente, Pieza vinculada, Código, Descripción, Origen, Revisión y Estado. La pieza puede quedar vacía.</p>
-    <div class="route-data-paste" data-route-data-paste-wrap><label for="route-data-paste">Pegar fila de Excel</label><input id="route-data-paste" type="text" autocomplete="off" placeholder="Haz clic aquí y pega las 7 celdas" data-route-data-paste></div>
+    <div class="route-data-paste" data-route-data-paste-wrap><label for="route-data-paste">Pegar fila de Excel</label><input id="route-data-paste" type="text" autocomplete="off" placeholder="Haz clic aquí y pega las {% if route_review_visible %}7{% else %}6{% endif %} celdas" data-route-data-paste></div>
     <p class="hint" role="status" aria-live="polite" data-route-data-message></p>
     <div class="route-data-scroll"><div class="route-data-sheet">
       <div class="route-data-head" aria-hidden="true">{% for field in form.visible_fields %}<span>{{ field.label }}</span>{% endfor %}</div>
@@ -38,27 +40,15 @@
     </div></div>
   </section>
   {% endif %}
-  <section class="card space-top operation-editor" data-operation-editor data-editor-mode="{% if request.POST.editor_mode == 'form' %}form{% else %}sheet{% endif %}">
-    <div class="section-head operation-section-head"><div><h2>Operaciones</h2><p class="muted">Cada fila representa un paso de la ruta.</p></div></div>
-    <p class="hint" data-sheet-hint>Puedes pegar filas o columnas copiadas de Excel. Orden de columnas: Posición, Secuencia, Proceso, Máquina, Herramental, Inspección y Eliminar.</p>
-    {{ formset.management_form }}
-    {% if formset.non_form_errors %}<div class="message error">{{ formset.non_form_errors }}</div>{% endif %}
-    <div class="operation-sheet-scroll">
-      <div class="operation-sheet">
-        <div class="operation-sheet-head" aria-hidden="true"><span>Posición</span><span>Secuencia</span><span>Proceso</span><span>Máquina</span><span>Herramental</span><span>Inspección</span><span>Eliminar</span></div>
-        <div class="operation-form-list" data-formset-list data-prefix="{{ formset.prefix }}">
-          {% for op_form in formset %}<div class="operation-form" data-operation-row>{{ op_form.id }}<div class="operation-grid">
-            {% for field in op_form.visible_fields %}<label class="operation-cell" data-op-col="{{ forloop.counter0 }}"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors }}</span>{% endif %}</label>{% endfor %}
-          </div></div>{% endfor %}
-        </div>
-      </div>
-    </div>
-    <template data-formset-template="{{ formset.prefix }}"><div class="operation-form" data-operation-row>{{ formset.empty_form.id }}<div class="operation-grid">
-      {% for field in formset.empty_form.visible_fields %}<label class="operation-cell" data-op-col="{{ forloop.counter0 }}"><span class="field-label">{{ field.label }}</span>{{ field }}</label>{% endfor %}
-    </div></div></template>
-    <p class="field-error" role="status" aria-live="polite" data-operation-message></p>
-    <div class="operation-actions"><button type="button" class="button secondary" data-add-form="{{ formset.prefix }}">＋ Agregar operación</button><span class="muted" data-operation-count></span></div>
-  </section>
+  {% include 'rutas/operation_editor.html' %}
+  {% if components %}
+  <section class="card space-top component-intro"><div class="section-head"><div><h2>Componentes del padre</h2><p class="muted">Agrega un hijo por cada pieza con procesos propios. Cada componente genera sus etiquetas con la cantidad que corresponde.</p></div><button type="button" class="button secondary" data-add-component>＋ Agregar componente</button></div></section>
+  {{ components.management_form }}
+  {% if components.non_form_errors %}<div class="message error space-top">{{ components.non_form_errors }}</div>{% endif %}
+  <div data-component-list>{% for row in component_rows %}{% include 'rutas/component_editor.html' with row=row component_number=forloop.counter %}{% endfor %}</div>
+  <template data-component-template>{% include 'rutas/component_editor.html' with row=component_empty component_number='__number__' %}</template>
+  <p class="field-error" data-component-message role="status" aria-live="polite"></p>
+  {% endif %}
   <div class="footer-actions"><a class="button secondary" href="{% if route %}{% url 'rutas:detail' route.pk %}{% else %}{% url 'rutas:list' %}{% endif %}">Cancelar</a><button class="button primary">Guardar ruta</button></div>
 </form>
 {% endblock %}

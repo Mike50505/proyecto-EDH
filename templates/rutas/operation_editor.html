@@ -1,0 +1,22 @@
+  <section class="card space-top operation-editor" data-operation-editor data-editor-mode="{% if request.POST.editor_mode == 'form' %}form{% else %}sheet{% endif %}">
+    <div class="section-head operation-section-head"><div><h2>Operaciones</h2><p class="muted">Cada fila representa un paso de la ruta.</p></div></div>
+    {% if formset.is_preset %}<p class="hint">Los procesos del Excel ya están cargados. Completa la secuencia, máquina, herramental o inspección de los que utilices. Los procesos predeterminados sin completar no se añaden; las operaciones ya guardadas se conservan.</p>{% endif %}
+    <p class="hint" data-sheet-hint>Puedes pegar filas o columnas copiadas de Excel. Orden de columnas: Posición, Secuencia, Proceso, Máquina, Herramental, Inspección y Eliminar.</p>
+    {{ formset.management_form }}
+    {% if formset.non_form_errors %}<div class="message error">{{ formset.non_form_errors }}</div>{% endif %}
+    <div class="operation-sheet-scroll">
+      <div class="operation-sheet">
+        <div class="operation-sheet-head" aria-hidden="true"><span>Posición</span><span>Secuencia</span><span>Proceso</span><span>Máquina</span><span>Herramental</span><span>Inspección</span><span>Eliminar</span></div>
+        <div class="operation-form-list" data-formset-list data-prefix="{{ formset.prefix }}">
+          {% for op_form in formset %}<div class="operation-form" data-operation-row {% if formset.is_preset %}data-preset-row data-default-name="{{ op_form.initial.name|default:'' }}" data-default-position="{{ op_form.initial.position|default:'' }}"{% endif %}>{{ op_form.id }}<div class="operation-grid">
+            {% for field in op_form.visible_fields %}<label class="operation-cell" data-op-col="{{ forloop.counter0 }}"><span class="field-label">{{ field.label }}</span>{{ field }}{% if field.errors %}<span class="field-error">{{ field.errors }}</span>{% endif %}</label>{% endfor %}
+          </div></div>{% endfor %}
+        </div>
+      </div>
+    </div>
+    <template data-formset-template="{{ formset.prefix }}"><div class="operation-form" data-operation-row>{{ formset.empty_form.id }}<div class="operation-grid">
+      {% for field in formset.empty_form.visible_fields %}<label class="operation-cell" data-op-col="{{ forloop.counter0 }}"><span class="field-label">{{ field.label }}</span>{{ field }}</label>{% endfor %}
+    </div></div></template>
+    <p class="field-error" role="status" aria-live="polite" data-operation-message></p>
+    <div class="operation-actions"><button type="button" class="button secondary" data-add-form="{{ formset.prefix }}">＋ Agregar operación</button><span class="muted" data-operation-count></span></div>
+  </section>

@@ -1,0 +1,181 @@
+EDH — RUTAS DE PROCESO
+Descripción de la aplicación, sus pantallas y su flujo de trabajo
+
+1. ¿DE QUÉ TRATA LA APP?
+
+EDH reúne las rutas de proceso de distintos clientes en una sola aplicación. Una ruta indica los pasos que debe seguir una pieza: qué proceso realizar, en qué máquina, con qué herramental y qué inspección corresponde.
+
+Su objetivo es facilitar la consulta, el mantenimiento y la impresión de estas rutas, evitando trabajar por separado con numerosos archivos de Excel. El catálogo contempla clientes como DAIKIN, LENNOX y RHEEM.
+
+La aplicación distingue entre la información permanente del catálogo y las órdenes que se capturan temporalmente para imprimir. Cargar órdenes para preparar un PDF no modifica las rutas existentes.
+
+2. INICIO DE SESIÓN
+
+Es la pantalla de entrada. El usuario escribe su nombre de usuario y contraseña para acceder.
+
+Cada cuenta tiene permisos que determinan qué acciones puede realizar. Por ejemplo, consultar rutas, preparar impresiones, editar información o importar archivos. Algunas secciones solo aparecen para usuarios autorizados.
+
+Dentro de la aplicación se puede cerrar sesión desde el menú lateral.
+
+3. UNIVERSO Y COBERTURA DE RUTAS
+
+Universo Ramos es el catálogo central de piezas. EDH consulta su API y mantiene una copia local de sus datos para vincular cada pieza con sus rutas de proceso.
+
+Esta pantalla muestra cuántas piezas activas tienen una ruta activa vinculada, cuántas tienen rutas por revisar y cuáles todavía no tienen una ruta vigente vinculada. Permite buscar por número de parte o cliente, filtrar la cobertura y consultar piezas inactivas.
+
+El catálogo se actualiza automáticamente cada cinco minutos. El usuario autorizado también puede pulsar Actualizar catálogo. Se muestra la fecha de la última actualización y, si hay un problema de conexión, se conserva la información disponible.
+
+Al abrir una pieza se consultan sus características, sus rutas vinculadas y las coincidencias pendientes. Crear ruta para esta pieza abre la captura con número de parte, cliente, diámetro y pared precargados. Las operaciones deben capturarse y revisarse; no se inventan a partir de las características de la pieza.
+
+Las rutas actuales se vinculan automáticamente únicamente cuando coinciden código y cliente. Los nombres diferentes, como LENNOX y LENNOX 1, requieren revisión manual. El apartado Rutas pendientes de vincular permite elegir la pieza correcta con confirmación explícita. Una pieza central puede tener varias rutas de distintos orígenes.
+
+Una modificación o baja en Universo no borra las rutas ni cambia sus operaciones o documentos históricos. Las características de la pieza se administran en Universo; el proceso de fabricación se administra en EDH. El porcentaje de cobertura indica existencia de rutas activas vinculadas, no certifica que su contenido esté actualizado.
+
+4. CATÁLOGO DE RUTAS
+
+Es la pantalla principal para encontrar las rutas disponibles.
+
+La lista muestra únicamente piezas padre correspondientes al universo activo, agrupadas por número de parte. Cada número aparece una sola vez aunque tenga varias rutas de distintos orígenes. El contador representa piezas únicas, no el total de variantes.
+
+Al abrir una pieza se muestran sus variantes por origen, estado y revisión. Cada variante conserva sus propias operaciones y sus componentes; desde ahí se puede abrir, editar o imprimir la ruta concreta. Los hijos que no son piezas del universo se consultan dentro de su padre y siguen disponibles para impresión.
+
+Al llevar piezas del catálogo a la tabla temporal se carga una fila por pieza. Si existen varias rutas activas, el usuario debe elegir el origen en la fila antes de imprimir.
+
+Permite buscar por código, descripción o número de dibujo, y filtrar por cliente, origen y estado. También permite ordenar los resultados y recorrer las páginas del catálogo.
+
+Las rutas pueden estar:
+- Activas: disponibles para el flujo de producción, sujeto a las validaciones de emisión.
+- Por revisar: requieren revisión; las vistas previas muestran su condición de no aprobadas.
+- Archivadas: se conservan como referencia y se excluyen de la selección temporal de impresión.
+
+Desde el catálogo se puede abrir una ruta para consultar sus detalles. También se pueden seleccionar rutas activas para llevarlas a la tabla de impresión y completar cantidad y semana.
+
+5. DETALLE DE UNA RUTA
+
+Muestra la información general de la ruta: código, descripción, cliente, origen, revisión, estado y datos del archivo del que proviene, cuando existe.
+
+La sección de operaciones presenta los pasos en orden, con proceso, máquina, herramental e inspección. También se muestran las incidencias relacionadas y el historial de cambios registrados en la web.
+
+Según los permisos, desde aquí se puede:
+- Editar la ruta.
+- Duplicarla para usarla como punto de partida de otra versión.
+- Archivarla.
+- Abrir una vista previa imprimible con diseño clásico o moderno.
+- Ir a Seleccionar órdenes para imprimir con cantidades y semanas.
+
+Si el ITEM PADRE es un ensamble con componentes RM, el detalle también muestra las rutas y operaciones de esos componentes. Se distinguen de las operaciones propias del ensamble; que el padre no tenga operaciones propias no significa que sus componentes estén vacíos. Las coincidencias duplicadas se señalan para revisión.
+
+“Imprimir ruta” abre una vista previa sin datos de una orden de producción. Para ensambles utiliza las rutas de componentes con la misma lógica de Seleccionar órdenes y permite incluir la etiqueta padre o conservar la numeración original. Para preparar órdenes con cantidades y semanas se utiliza la tabla de Seleccionar órdenes.
+
+6. NUEVA RUTA Y EDITAR RUTA
+
+Estas pantallas permiten crear o mantener el contenido del catálogo. Ofrecen dos modos de captura: celdas similares a Excel y formulario tradicional.
+
+Al crear una ruta se eligen cliente, origen, revisión y estado. El apartado Datos de Familias permite capturar una fila basada en la hoja Familias: tipo, BOM, revisión de dibujo, parte, descripción, número de dibujo, cantidad, OD, pared, desarrollo, comentario y fase. Se pueden pegar las celdas desde Excel.
+
+Al editar una ruta existente se muestra su configuración y la pieza vinculada. Esta pantalla no es idéntica a la captura de Familias de una ruta nueva.
+
+En Operaciones, cada fila representa un paso del proceso. Se indica posición, secuencia, proceso, máquina, herramental e inspección. Se pueden agregar operaciones, quitar filas y pegar información desde Excel.
+
+Al guardar se actualiza el catálogo y se registra el cambio. Si otra persona modificó la misma ruta mientras se estaba editando, la app pide recargarla para revisar la versión actual.
+
+7. SELECCIONAR ÓRDENES: IMPRESIÓN TEMPORAL
+
+Es la pantalla principal para preparar varias órdenes y generar un solo PDF.
+
+La tabla utiliza tres datos que captura el usuario:
+- ITEM PADRE: número de la pieza cuya ruta se necesita.
+- CANTIDAD: cantidad de la orden.
+- SEMANA: identificador de semana, que puede contener letras o ceros iniciales.
+
+Se puede escribir directamente en las celdas, pegar varias filas desde Excel o cargar un archivo con la plantilla descargable. La carga coloca los datos en la tabla para revisarlos antes de imprimir.
+
+ITEM PADRE ofrece sugerencias de códigos disponibles. La búsqueda considera todos los clientes y orígenes; no es necesario elegir un origen antes de empezar. Si un mismo código tiene varias rutas, aparece un selector en esa fila para elegir la correcta.
+
+RE se muestra como dato calculado a partir de los componentes RM de la pieza; no se captura en la plantilla. SHOP ORDER toma el mismo valor que SEMANA y la secuencia se asigna según el orden de las filas.
+
+Encima de la tabla están LINEA, PLANNER y RESPONSABLE. Son opcionales, se llenan una sola vez para todas las rutas y se recuerdan en ese navegador al salir y volver a entrar. No son columnas del Excel.
+
+Se pueden agregar filas hasta el límite de 200 órdenes. Antes de generar el PDF, la app verifica los datos y muestra los problemas que deben corregirse, como cantidades inválidas, items sin ruta o coincidencias pendientes de selección.
+
+Las órdenes de esta pantalla son temporales: cargar un Excel o generar el PDF no crea una programación guardada ni un documento emitido permanente. Las rutas por revisar pueden aparecer como vista previa no aprobada.
+
+8. OPCIONES DE IMPRESIÓN Y PDF
+
+Al preparar la impresión se puede elegir:
+- Formato clásico: conserva la presentación tradicional.
+- Formato moderno: utiliza una presentación más limpia, con jerarquía visual y estilo inspirado en Apple, manteniendo el logo.
+
+También se elige cómo presentar las etiquetas:
+- Solo componentes: omite la etiqueta padre y numera las etiquetas visibles desde 1.
+- Con padre: incluye la etiqueta padre y las de componentes.
+- Numeración original: omite el padre, pero conserva la numeración original; por eso puede comenzar en 2 de 3.
+
+El PDF reúne las etiquetas correspondientes a las órdenes seleccionadas. La cantidad de etiquetas depende de la pieza y sus componentes; no necesariamente coincide con el número de filas capturadas. Los formatos están preparados para colocar dos etiquetas por página cuando corresponde.
+
+El PDF se abre en el navegador, donde se puede revisar, descargar o enviar a una impresora mediante las opciones normales de impresión.
+
+9. IMPORTAR EXCEL: CARGA DEL CATÁLOGO
+
+Esta sección incorpora rutas desde libros XLSM de origen. Es diferente de cargar la plantilla de órdenes: aquí se trabaja con información que puede quedar guardada en el catálogo.
+
+Se eligen cliente, origen, archivo y contraseña de apertura si el libro la requiere. La contraseña se utiliza durante la lectura y no se guarda; los archivos originales permanecen intactos.
+
+La opción Solo simular permite revisar el resultado antes de hacer una importación real. La simulación registra el resultado del análisis, pero no crea los datos de negocio del catálogo.
+
+Al procesar el archivo aparece un resumen de resultados y se puede descargar un informe de incidencias en CSV. Si la simulación encuentra problemas, conviene revisarlos antes de realizar la carga definitiva.
+
+10. INCIDENCIAS Y REVISIÓN
+
+La pantalla Incidencias reúne los problemas detectados durante la importación. Permite filtrar por cliente y tipo de incidencia.
+
+Al abrir una incidencia se muestra el motivo de revisión, el registro afectado y, cuando existe, otra coincidencia para comparar. Se pueden consultar sus datos y operaciones junto con la referencia al archivo y fila de origen.
+
+El usuario autorizado documenta la decisión y su evidencia para marcar la incidencia como resuelta. Resolverla no activa automáticamente la ruta. La activación y la emisión mantienen sus validaciones correspondientes.
+
+11. PROGRAMACIÓN GUARDADA Y DOCUMENTOS EMITIDOS
+
+Además de la tabla temporal, la aplicación conserva un flujo de programación guardada. No tiene una sección propia en el menú principal actual.
+
+La pantalla de nueva programación permite registrar cliente, semana, línea, planner, responsable, fechas, copias y partidas con ruta y cantidad. Este flujo exige que las rutas pertenezcan al cliente seleccionado.
+
+El detalle de programación muestra las partidas, sus componentes y cantidades calculadas. Desde ahí se puede emitir un PDF si se cumplen los permisos y las validaciones de aprobación.
+
+A diferencia de Seleccionar órdenes, este flujo sí guarda la programación y los documentos emitidos para poder consultarlos posteriormente. El documento conserva la información utilizada al momento de emitirlo.
+
+12. USUARIOS
+
+La sección Usuarios está disponible para el administrador principal. Permite buscar cuentas, crear usuarios, editar sus datos y permisos por grupos, activar o desactivar cuentas y cambiar contraseñas.
+
+Las cuentas administrativas se gestionan desde la administración de Django, no desde el formulario de edición de usuarios comunes.
+
+13. MODO CLARO Y OSCURO
+
+El botón de la barra superior permite cambiar entre modo claro y oscuro. La interfaz sigue una línea visual inspirada en Apple. Este cambio afecta la presentación de la aplicación; el diseño del PDF se elige por separado.
+
+14. FLUJO HABITUAL DE TRABAJO
+
+Para imprimir órdenes con rutas que ya existen:
+1) Iniciar sesión.
+2) Entrar en Seleccionar órdenes.
+3) Escribir, pegar o cargar ITEM PADRE, CANTIDAD y SEMANA.
+4) Elegir la ruta correcta si hay varias coincidencias.
+5) Completar los datos comunes opcionales si se necesitan.
+6) Elegir diseño y modalidad de etiquetas.
+7) Corregir los errores indicados y crear el PDF.
+8) Revisar el PDF y descargarlo o imprimirlo.
+
+Para incorporar o mantener rutas:
+1) Crear una ruta manualmente o analizar un libro en Importar Excel.
+2) Revisar el resultado y las incidencias.
+3) Corregir datos y operaciones, documentando las decisiones necesarias.
+4) Activar la ruta cuando cumpla las validaciones.
+5) Usarla en la preparación de órdenes o en una programación guardada.
+
+15. BASE TÉCNICA, EN POCAS PALABRAS
+
+EDH es una aplicación web: se utiliza desde un navegador. Está desarrollada con Django, guarda el catálogo en PostgreSQL y genera documentos PDF. Docker facilita ejecutar sus servicios.
+
+El servidor aloja la aplicación y los usuarios acceden a su dirección desde dispositivos con conexión a él. Los permisos controlan las acciones disponibles para cada cuenta.
+
+La conexión con Heilians para obtener automáticamente órdenes activas está pendiente. Actualmente las órdenes se preparan mediante captura, pegado o carga de Excel; no existe todavía una consulta automática a Heilians.

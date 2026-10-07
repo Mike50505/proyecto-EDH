@@ -1,0 +1,10 @@
+{% extends 'base.html' %}{% load navigation %}
+{% block title %}Nueva ruta · EDH{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">NUEVA RUTA · PASO 1 DE 2</p><h1>Elige una pieza sin ruta</h1><p class="muted">Selecciona una pieza activa de Universo Ramos. Después podrás capturar sus procesos en celdas o en formulario.</p></div><a class="button secondary" href="{% url 'rutas:list' %}">Volver al catálogo</a></div>
+<form method="get" class="filter-panel" role="search"><div class="search-field"><input name="q" type="search" value="{{ query }}" aria-label="Buscar pieza sin ruta" placeholder="Buscar número de parte o cliente" autofocus></div><button class="button secondary">Buscar</button></form>
+{% pagination page placement="top" %}
+<section class="table-card"><div class="table-caption"><strong>{{ page.paginator.count }} piezas sin ruta</strong><span>Universo Ramos</span></div><div class="table-scroll"><table><thead><tr><th>Número de parte</th><th>Cliente</th><th>Diámetro</th><th>Pared</th><th></th></tr></thead><tbody>{% for piece in page %}<tr><td><strong>{{ piece.part_number }}</strong></td><td>{{ piece.customer }}</td><td>{{ piece.data.diameter|default:'—' }}</td><td>{{ piece.data.wall|default:'—' }}</td><td><a class="button primary" href="{% url 'rutas:create' %}?universe_id={{ piece.pk }}">Elegir pieza ›</a></td></tr>{% empty %}<tr><td colspan="5" class="empty">{% if query %}No hay piezas sin ruta que coincidan con tu búsqueda.{% else %}No hay piezas activas de Universo pendientes de crear una ruta.{% endif %}</td></tr>{% endfor %}</tbody></table></div></section>
+{% pagination page %}
+<p class="hint">Si falta una pieza, agrégala primero en Universo Ramos y actualiza el catálogo en EDH.</p>
+{% endblock %}

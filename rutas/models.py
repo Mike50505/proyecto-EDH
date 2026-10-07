@@ -77,6 +77,8 @@ class Part(models.Model):
 class BOMItem(models.Model):
     parent = models.ForeignKey(Part, on_delete=models.CASCADE, related_name="components")
     component = models.ForeignKey(Part, on_delete=models.PROTECT, related_name="used_in")
+    component_route = models.ForeignKey("Route", null=True, blank=True, on_delete=models.PROTECT,
+                                        related_name="parent_bom_items")
     quantity_per = models.DecimalField(max_digits=14, decimal_places=4, validators=[MinValueValidator(0)])
     position = models.PositiveIntegerField()
     source_raw_quantity = models.CharField(max_length=80, blank=True)
@@ -86,12 +88,42 @@ class BOMItem(models.Model):
         constraints = [models.UniqueConstraint(fields=["parent", "position"], name="unique_bom_position")]
 
 
+class UniversoPart(models.Model):
+    """Central identity, independent of the source-specific local BOM pieces."""
+    id = models.UUIDField(primary_key=True, editable=False)
+    part_number = models.CharField(max_length=160)
+    normalized_number = models.CharField(max_length=160, db_index=True)
+    customer = models.CharField(max_length=160)
+    active = models.BooleanField(default=True)
+    version = models.PositiveIntegerField(default=1)
+    data = models.JSONField(default=dict)
+    synced_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["part_number", "id"]
+
+    def __str__(self):
+        return self.part_number
+
+
+class UniversoSync(models.Model):
+    key = models.CharField(max_length=16, primary_key=True, default="catalog")
+    cursor = models.TextField(blank=True)
+    initialized = models.BooleanField(default=False)
+    last_success = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True)
+    lease = models.UUIDField(null=True, blank=True)
+    lease_until = models.DateTimeField(null=True, blank=True)
+
+
 class Route(models.Model):
     REVIEW = "review"
     ACTIVE = "active"
     ARCHIVED = "archived"
     STATUS = [(REVIEW, "Por revisar"), (ACTIVE, "Activa"), (ARCHIVED, "Archivada")]
     client = models.ForeignKey(Client, on_delete=models.PROTECT)
+    universe_part = models.ForeignKey(UniversoPart, null=True, blank=True, on_delete=models.PROTECT, related_name="routes")
+    universe_auto_link = models.BooleanField(default=True)
     part = models.ForeignKey(Part, null=True, blank=True, on_delete=models.PROTECT)
     code = models.CharField(max_length=160)
     description = models.TextField(blank=True)

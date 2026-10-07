@@ -1,4 +1,5 @@
 from django import forms
+from django.conf import settings
 from django.forms import inlineformset_factory
 from django.forms.models import BaseInlineFormSet
 from rutas.models import ImportIssue, Route, Operation, Part, Schedule, ScheduleLine
@@ -46,6 +47,8 @@ class RouteForm(forms.ModelForm):
         )
         if self.instance.pk:
             self.fields["version"].initial = self.instance.version
+        if not settings.ROUTE_REVIEW_VISIBLE:
+            self.fields["status"].widget = forms.HiddenInput()
 
     def clean(self):
         data = super().clean()
@@ -75,8 +78,45 @@ OperationFormSet = inlineformset_factory(
     extra=1, max_num=200, validate_max=True, can_delete=True, formset=OrderedOperationFormSet,
     labels={"position": "Posición", "source_sequence": "Secuencia", "name": "Proceso", "machine": "Máquina",
             "tooling": "Herramental", "inspection": "Inspección"},
-    widgets={"tooling": forms.TextInput(), "inspection": forms.TextInput(), "machine": forms.TextInput()}
+    widgets={"tooling": forms.TextInput(), "inspection": forms.TextInput(), "machine": forms.TextInput(),
+             "name": forms.TextInput(attrs={"list": "default-processes"})}
 )
+
+
+DEFAULT_PROCESSES = (
+    "CORTE", "DOBLEZ", "RECTIFICADO 1", "RECTIFICADO 2", "TALADRADO", "PERFORACION",
+    "EXTRUSION", "EXTRUSION 2", "RECTIFICADO DE OVALAMIENTO", "SWAGE", "EXPANSION",
+    "EXPANSION 2", "PINCHADO", "BEADING", "INDENTACION", "BOCA DE PESCADO", "SELLADO",
+    "SOLDADURA SELLO", "SOLDADURA", "INSPECCION VISUAL", "INSPECCION PDEC", "LAVADO",
+    "SOPLETEO", "EMPAQUE",
+)
+
+
+class PresetOperationFormSet(OperationFormSet):
+    extra = len(DEFAULT_PROCESSES)
+
+
+def preset_operation_formset(data=None, instance=None, prefix=None):
+    # Unchanged extra forms have empty cleaned_data: process names alone never
+    # create operations. Initial values must be identical on GET and POST.
+    existing = list(instance.operations.all()) if instance and instance.pk else []
+    names = {op.name.strip().upper() for op in existing}
+    missing = [name for name in DEFAULT_PROCESSES if name not in names]
+    start = max((op.position for op in existing), default=0)
+    initial = [{"position": start + index, "name": name} for index, name in enumerate(missing, 1)]
+    use_presets = True
+    if data is not None:
+        try:
+            use_presets = int(data.get(f"{prefix or OperationFormSet.get_default_prefix()}-TOTAL_FORMS", "0")) >= len(existing) + len(initial)
+        except (ValueError, TypeError):
+            pass  # Management-form validation reports malformed counts.
+    options = {"instance": instance, "initial": initial if use_presets else []}
+    if prefix is not None:
+        options["prefix"] = prefix
+    formset = PresetOperationFormSet(data, **options)
+    formset.extra = len(initial) if use_presets else 1
+    formset.is_preset = use_presets
+    return formset
 
 
 class ScheduleForm(forms.ModelForm):

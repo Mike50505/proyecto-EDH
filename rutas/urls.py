@@ -1,9 +1,15 @@
 from django.urls import path
-from rutas import user_admin, views
+from rutas import user_admin, views, universo_views
 
 app_name = "rutas"
 urlpatterns = [
+    path("universo/", universo_views.coverage, name="universe"),
+    path("universo/sincronizar/", universo_views.sync, name="universe_sync"),
+    path("universo/<uuid:pk>/", universo_views.piece_detail, name="universe_detail"),
+    path("rutas/<int:pk>/vincular/", universo_views.link_route, name="universe_link"),
+    path("rutas/<int:pk>/desvincular/", universo_views.unlink_route, name="universe_unlink"),
     path("", views.route_list, name="list"),
+    path("piezas/rutas/<int:pk>/", views.route_group, name="route_group"),
     path("usuarios/", user_admin.user_list, name="user_list"),
     path("usuarios/nuevo/", user_admin.user_create, name="user_create"),
     path("usuarios/<int:pk>/editar/", user_admin.user_edit, name="user_edit"),

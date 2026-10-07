@@ -77,3 +77,23 @@ En Windows, `powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify_ba
 ## Límites actuales
 
 El PDF está compuesto en carta horizontal, dos etiquetas por hoja, según la captura recibida. No se ha medido contra una impresión física ni probado la impresora real. La captura muestra dos RM, pero no la etiqueta `1 DE 3` del padre ni el tratamiento general de PP/BR; esas reglas siguen pendientes de confirmación operativa. Falta una comparación visual lado a lado dentro de la pantalla de incidencias, así como métricas de rendimiento con carga representativa. No utilices el PDF provisional como sustituto definitivo de la etiqueta de producción sin esa validación.
+
+### Visibilidad del estado de revisión
+
+`ROUTE_REVIEW_VISIBLE = False` en `config/settings.py` oculta temporalmente los indicadores y controles de revisión de la interfaz operativa. Los estados, incidencias y validaciones de emisión se conservan. Cambiarlo a `True` permite volver a mostrarlos.
+
+### Nueva ruta desde Universo
+
+La captura manual comienza seleccionando una pieza activa de Universo Ramos sin rutas existentes. Se verifica tanto el UUID como el número exacto, incluidas rutas archivadas o pendientes de vincular. El cliente, tipo FP y número se toman de la pieza central; el número se valida al guardar y se comprueba nuevamente dentro de una transacción. Las variantes previamente importadas se conservan. La duplicación manual queda deshabilitada; se edita la ruta existente.
+
+### Componentes al crear una ruta
+
+Después de elegir el padre en Universo, “Agregar componente” abre una ficha de hijo con número, descripción, cantidad por padre, dimensiones y una tabla propia de operaciones. Las tablas permiten pegar desde Excel y usar el modo formulario. Se validan cantidades positivas, números distintos y al menos una operación por hijo; padres e hijos se guardan juntos en una transacción. Los hijos se crean como RM y se enlazan al padre mediante BOM y a su ruta específica; no requieren una pieza central independiente ni se vinculan automáticamente a Universo. Al imprimir, se multiplican las cantidades por las del padre y las operaciones largas continúan en varias etiquetas/hojas. Se conservan los modos de numeración y los diseños existentes.
+
+### Edición completa de EDH
+
+Editar utiliza el mismo formato que agregar: datos de Familias, procesos predeterminados y componentes con sus propias operaciones. Las operaciones existentes se conservan y solo se añaden los procesos predeterminados que se completen. Se pueden editar cantidades, agregar o retirar hijos y pegar desde Excel. Los materiales importados sin ruta propia pueden conservarse sin inventar operaciones. Los cambios se guardan juntos y se comprueban las versiones del padre y los hijos. Al modificar piezas o rutas compartidas se crea una copia para la variante editada, conservando las de los otros ensambles y orígenes.
+
+### Selección e impresión de padres
+
+El selector ITEM PADRE y la resolución de filas pegadas utilizan exclusivamente el catálogo de padres de Universo, excluyendo las rutas de componentes. La impresión desde la interfaz utiliza por defecto “Padre y componentes”; se mantienen las opciones de solo componentes y numeración original. El formato conserva dos etiquetas por página física: un padre y un hijo pueden imprimirse juntos en una hoja.

@@ -7,6 +7,7 @@ from openpyxl import load_workbook
 from django.utils import timezone
 
 from rutas.models import Route
+from rutas.services.catalog import parent_routes
 from rutas.services.documents import preview_labels_for_line, render_pdf, validate_label_mode
 
 HEADERS = ("ITEM PADRE", "CANTIDAD", "SEMANA")
@@ -113,7 +114,7 @@ def build_pdf(rows, template_key="mesa-two-labels-v1", label_mode="components_on
         sequence = row_index
         if not row.get("parent_code"):
             continue
-        routes = Route.objects.filter(code__iexact=row["parent_code"]).exclude(
+        routes = parent_routes().filter(code__iexact=row["parent_code"]).exclude(
             status=Route.ARCHIVED).select_related("client", "part", "source")
         matches = list(routes.order_by("client__name", "classification", "source_row", "id")[:2])
         if not matches:
@@ -152,6 +153,6 @@ def build_pdf(rows, template_key="mesa-two-labels-v1", label_mode="components_on
         "issue_date": timezone.localdate().isoformat(),
         "ship_date": "", "copies": 1, "lines": [], "labels": labels,
         "label_mode": label_mode,
-        "preview_status": "VISTA PREVIA · RUTAS POR REVISAR · NO APROBADA" if has_unapproved_routes else "SELECCIÓN TEMPORAL · NO GUARDADA",
+        "preview_status": "VISTA PREVIA · NO APROBADA" if has_unapproved_routes else "SELECCIÓN TEMPORAL · NO GUARDADA",
     }
     return render_pdf(snapshot, template_key)

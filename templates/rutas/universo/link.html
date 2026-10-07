@@ -1,0 +1,10 @@
+{% extends 'base.html' %}{% load navigation %}
+{% block breadcrumb %}<a href="{% url 'rutas:universe' %}">Universo Ramos</a> / Vincular ruta{% endblock %}
+{% block content %}
+<div class="page-heading"><div><p class="eyebrow">VINCULAR PIEZA</p><h1>{{ route.code }}</h1><p class="muted">{{ route.client.name }} · {{ route.classification|default:'Captura web' }}{% if route_review_visible or route.status != 'review' %} · {{ route.get_status_display }}{% endif %}</p></div><a class="button secondary" href="{% url 'rutas:detail' route.pk %}">Volver a la ruta</a></div>
+{% if route.universe_part %}<div class="message">Vinculada actualmente a {{ route.universe_part.part_number }} · {{ route.universe_part.customer }}. Elegir otra pieza reemplazará ese vínculo.</div>{% endif %}
+<form method="get" class="filters"><label class="search-field"><span class="sr-only">Buscar pieza del universo</span><input name="q" value="{{ query }}" placeholder="Número de parte o cliente"></label><button class="button secondary">Buscar</button></form>
+{% pagination page placement="top" %}
+<section class="card"><h2>Elige la pieza correspondiente</h2><p class="muted">Comprueba número de parte y cliente. El vínculo conserva las operaciones, revisiones y documentos de la ruta.</p><div class="table-scroll"><table><thead><tr><th>Pieza del universo</th><th>Cliente</th><th>Confirmación</th></tr></thead><tbody>{% for piece in page %}<tr><td>{{ piece.part_number }}<small>{{ piece.data.diameter|default:'—' }}</small></td><td>{{ piece.customer }}</td><td><form method="post" class="universe-link-form">{% csrf_token %}<input type="hidden" name="piece_id" value="{{ piece.pk }}"><label><input type="checkbox" name="confirm" value="yes" required> Corresponde a esta ruta</label><button class="button secondary">Vincular</button></form></td></tr>{% empty %}<tr><td colspan="3" class="empty">No hay piezas activas con esta búsqueda. Prueba otro código o cliente.</td></tr>{% endfor %}</tbody></table></div></section>
+{% pagination page %}
+{% endblock %}

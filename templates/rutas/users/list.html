@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+{% extends 'base.html' %}{% load navigation %}
 {% block title %}Usuarios · EDH{% endblock %}
 {% block breadcrumb %}Usuarios{% endblock %}
 {% block content %}
@@ -10,6 +10,7 @@
   <div class="search-field"><span aria-hidden="true">⌕</span><input type="search" name="q" value="{{ query }}" aria-label="Buscar usuarios" placeholder="Buscar por usuario, nombre o correo"></div>
   <button class="button secondary">Buscar</button>
 </form>
+{% pagination page placement="top" %}
 <div class="table-card"><div class="table-caption"><strong>{{ page.paginator.count }} usuarios</strong><span>Mostrando {{ page.start_index }}–{{ page.end_index }}</span></div><div class="table-scroll"><table>
   <thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Último acceso</th><th></th></tr></thead><tbody>
   {% for account in page %}<tr>
@@ -21,5 +22,5 @@
     <td>{% if not account.is_superuser and not account.is_staff %}<a class="button secondary" href="{% url 'rutas:user_edit' account.pk %}">Administrar</a>{% else %}<span class="muted">Admin de Django</span>{% endif %}</td>
   </tr>{% empty %}<tr><td colspan="6" class="empty">No se encontraron usuarios.</td></tr>{% endfor %}
   </tbody></table></div></div>
-{% if page.paginator.num_pages > 1 %}<nav class="pagination" aria-label="Páginas">{% if page.has_previous %}<a href="?q={{ query|urlencode }}&page={{ page.previous_page_number }}">← Anterior</a>{% endif %}<span>Página {{ page.number }} de {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a href="?q={{ query|urlencode }}&page={{ page.next_page_number }}">Siguiente →</a>{% endif %}</nav>{% endif %}
+{% pagination page %}
 {% endblock %}

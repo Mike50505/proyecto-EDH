@@ -10,4 +10,5 @@ static/dist/
 *.pdf
 *.xlsm
 tmp/
+.tmp/
 outputs/

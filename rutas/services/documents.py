@@ -24,9 +24,10 @@ TEMPLATE_FILES = {
 LABEL_MODE_ORIGINAL = "original"
 LABEL_MODE_INCLUDE_PARENT = "include_parent"
 LABEL_MODE_COMPONENTS_ONLY = "components_only"
+DEFAULT_LABEL_MODE = LABEL_MODE_INCLUDE_PARENT
 LABEL_MODES = (
+    (LABEL_MODE_INCLUDE_PARENT, "Padre y componentes"),
     (LABEL_MODE_COMPONENTS_ONLY, "Solo componentes, desde 1"),
-    (LABEL_MODE_INCLUDE_PARENT, "Incluir etiqueta del ensamble padre"),
     (LABEL_MODE_ORIGINAL, "Original (reservar 1 para el padre)"),
 )
 
@@ -73,6 +74,39 @@ def operation_data(route):
             for op in route.operations.all()]
 
 
+def uses_parent_operations(parent):
+    """A BOM alone does not imply separate process routes for its materials.
+
+    Use the recorded parent process only when none of its RM components has
+    a route in this source. Archived and partial component routes still fail
+    validation instead of silently dropping a component.
+    """
+    if not parent.source_id or not parent.part_id or not parent.operations.exists():
+        return False
+    materials = [item for item in parent.part.components.all() if item.component.part_type == "RM"]
+    if any(item.component_route_id for item in materials):
+        return False
+    codes = [item.component.code for item in materials]
+    if not codes:
+        return False
+    candidates = Route.objects.filter(client=parent.client, code__in=codes)
+    if parent.source_id:
+        candidates = candidates.filter(source_id=parent.source_id)
+    else:
+        candidates = candidates.filter(classification=parent.classification)
+    return not candidates.exists()
+
+
+def component_route_candidates(parent, bom):
+    if bom.component_route_id:
+        return Route.objects.filter(pk=bom.component_route_id, client_id=parent.client_id,
+                                    part_id=bom.component_id)
+    candidates = Route.objects.filter(code=bom.component.code, client=parent.client)
+    if parent.source_id:
+        return candidates.filter(source_id=parent.source_id)
+    return candidates.filter(classification=parent.classification)
+
+
 def snapshot_line(line):
     route = Route.objects.select_related("part", "source").prefetch_related("operations", "part__components__component").get(pk=line.route_id)
     ensure_emittable(route)
@@ -99,16 +133,12 @@ def labels_for_line(line, label_mode=LABEL_MODE_COMPONENTS_ONLY):
     parent = Route.objects.select_related("part", "source").prefetch_related("operations", "part__components__component").get(pk=line.route_id)
     ensure_emittable(parent)
     rm_items = [item for item in parent.part.components.all() if item.component.part_type == "RM"] if parent.part else []
-    if not rm_items:
+    if not rm_items or uses_parent_operations(parent):
         part = parent.part
         return [make_label(parent, parent, part, line, line.quantity, 1, 1)]
     labels = [parent_label(parent, line, len(rm_items))] if label_mode == LABEL_MODE_INCLUDE_PARENT else []
     for position, bom in enumerate(rm_items, 1):
-        candidates = Route.objects.filter(code=bom.component.code, client=parent.client, status=Route.ACTIVE)
-        if parent.source_id:
-            candidates = candidates.filter(source_id=parent.source_id)
-        else:
-            candidates = candidates.filter(classification=parent.classification)
+        candidates = component_route_candidates(parent, bom).filter(status=Route.ACTIVE)
         child_routes = list(candidates.prefetch_related("operations")[:2])
         if len(child_routes) != 1:
             raise ValueError(f"El componente {bom.component.code} necesita una ruta activa única en {parent.classification}.")
@@ -132,18 +162,14 @@ def preview_labels_for_line(line, label_mode=LABEL_MODE_COMPONENTS_ONLY):
         ).exists()
     )
     rm_items = [item for item in parent.part.components.all() if item.component.part_type == "RM"] if parent.part else []
-    if not rm_items:
+    if not rm_items or uses_parent_operations(parent):
         labels = [make_label(parent, parent, parent.part, line, line.quantity, 1, 1)]
     else:
         labels = [parent_label(parent, line, len(rm_items))] if label_mode == LABEL_MODE_INCLUDE_PARENT else []
         for position, bom in enumerate(rm_items, 1):
-            candidates = Route.objects.filter(code=bom.component.code, client=parent.client).exclude(
+            candidates = component_route_candidates(parent, bom).exclude(
                 status=Route.ARCHIVED
             )
-            if parent.source_id:
-                candidates = candidates.filter(source_id=parent.source_id)
-            else:
-                candidates = candidates.filter(classification=parent.classification)
             choices = list(candidates.order_by("source_row", "id").prefetch_related("operations")[:2])
             if not choices:
                 raise ValueError(f"El componente {bom.component.code} no tiene ruta en {parent.classification}.")
@@ -166,6 +192,7 @@ def preview_labels_for_line(line, label_mode=LABEL_MODE_COMPONENTS_ONLY):
 def make_label(parent, route, component, line, quantity, index, total):
     re_count = parent.part.components.filter(component__part_type="RM").count() if parent.part_id else 0
     return {"parent_code": parent.code, "parent_description": parent.description,
+            "route_id": route.pk, "parent_route_id": parent.pk,
             "component_code": component.code if component else route.code,
             "component_description": component.description if component else route.description,
             "dimensions": {"od": component.od_raw, "wall": component.wall_raw, "development": component.development_raw} if component else {},

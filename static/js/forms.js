@@ -4,6 +4,7 @@ function appendForm(prefix) {
   const list = document.querySelector(`[data-formset-list][data-prefix="${prefix}"]`);
   if (!total || !template || !list) return null;
   const index = Number(total.value);
+  if (index >= 200) return null;
   const fragment = template.content.cloneNode(true);
   fragment.querySelectorAll('[name], [id], [for]').forEach(element => {
     for (const attribute of ['name', 'id', 'for']) {
@@ -29,7 +30,7 @@ const routeDataPaste = routeDataEditor?.querySelector('[data-route-data-paste]')
 const routeDataMessage = routeDataEditor?.querySelector('[data-route-data-message]');
 const routeClient = routeDataEditor?.querySelector('[name="client"]');
 const routePart = routeDataEditor?.querySelector('[name="part"]');
-const routeDataFields = ['client', 'part', 'code', 'description', 'classification', 'revision', 'status'];
+const routeDataFields = ['client', 'part', 'code', 'description', 'classification', 'revision', 'status'].filter(name => routeDataEditor?.querySelector(`[name="${name}"]`));
 const normalizeRouteValue = value => value.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
 const familyEditor = document.querySelector('[data-family-editor]');
 const familyPaste = familyEditor?.querySelector('[data-family-paste]');
@@ -146,30 +147,45 @@ if (routeDataEditor) {
   });
 }
 
-const operationEditor = document.querySelector('[data-operation-editor]');
-const operationList = operationEditor?.querySelector('[data-formset-list]');
 const operationModeInput = document.querySelector('[data-editor-mode-input]');
-const operationMessage = operationEditor?.querySelector('[data-operation-message]');
 const operationColumns = ['position', 'source_sequence', 'name', 'machine', 'tooling', 'inspection', 'DELETE'];
 
-function updateOperationCount() {
-  if (!operationEditor) return;
-  const count = [...operationList.querySelectorAll('[data-operation-row]')].filter(row =>
-    row.querySelector('input[name$="-name"]')?.value.trim() && !row.querySelector('input[name$="-DELETE"]')?.checked
-  ).length;
-  operationEditor.querySelector('[data-operation-count]').textContent = `${count} ${count === 1 ? 'operación' : 'operaciones'} capturadas`;
+function operationIsSelected(row) {
+  if (row.querySelector('input[name$="-DELETE"]')?.checked) return false;
+  const name = row.querySelector('input[name$="-name"]')?.value.trim();
+  if (!name) return false;
+  if (row.querySelector('input[name$="-id"]')?.value) return true;
+  if (!row.hasAttribute('data-preset-row')) return true;
+  return name !== row.dataset.defaultName ||
+    row.querySelector('input[name$="-position"]')?.value !== row.dataset.defaultPosition ||
+    ['source_sequence', 'machine', 'tooling', 'inspection'].some(field =>
+      row.querySelector(`[name$="-${field}"]`)?.value.trim());
 }
 
-if (operationEditor) {
-  document.querySelectorAll('[data-editor-switch]').forEach(button => button.addEventListener('click', () => {
-    operationEditor.dataset.editorMode = button.dataset.editorSwitch;
-    if (routeDataEditor) routeDataEditor.dataset.editorMode = button.dataset.editorSwitch;
-    if (familyEditor) familyEditor.dataset.editorMode = button.dataset.editorSwitch;
-    operationModeInput.value = button.dataset.editorSwitch;
-    document.querySelectorAll('[data-editor-switch]').forEach(item =>
-      item.setAttribute('aria-pressed', String(item === button)));
-  }));
+function updateOperationCount() {
+  document.querySelectorAll('[data-operation-editor]').forEach(editor => {
+    const count = [...editor.querySelectorAll('[data-operation-row]')].filter(row => {
+      const selected = operationIsSelected(row);
+      row.classList.toggle('operation-selected', Boolean(selected));
+      return selected;
+    }).length;
+    editor.querySelector('[data-operation-count]').textContent = `${count} ${count === 1 ? 'operaci\u00f3n' : 'operaciones'} capturadas`;
+  });
+}
 
+document.querySelectorAll('[data-editor-switch]').forEach(button => button.addEventListener('click', () => {
+  document.querySelectorAll('[data-operation-editor], [data-route-data-editor], [data-family-editor]').forEach(editor => {
+    editor.dataset.editorMode = button.dataset.editorSwitch;
+  });
+  if (operationModeInput) operationModeInput.value = button.dataset.editorSwitch;
+  document.querySelectorAll('[data-editor-switch]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+}));
+
+function initOperationEditor(operationEditor) {
+  if (operationEditor.dataset.initialized) return;
+  operationEditor.dataset.initialized = 'true';
+  const operationList = operationEditor.querySelector('[data-formset-list]');
+  const operationMessage = operationEditor.querySelector('[data-operation-message]');
   operationEditor.addEventListener('input', event => {
     if (event.target.matches('input[name$="-name"]') && event.target.value.trim()) {
       const row = event.target.closest('[data-operation-row]');
@@ -219,6 +235,44 @@ if (operationEditor) {
   });
   updateOperationCount();
 }
+
+document.querySelectorAll('[data-operation-editor]').forEach(initOperationEditor);
+
+const componentList = document.querySelector('[data-component-list]');
+const componentTemplate = document.querySelector('[data-component-template]');
+const componentTotal = document.getElementById('id_components-TOTAL_FORMS');
+const componentMessage = document.querySelector('[data-component-message]');
+document.querySelector('[data-add-component]')?.addEventListener('click', () => {
+  const index = Number(componentTotal.value);
+  if (index >= 25) {
+    componentMessage.textContent = 'Puedes capturar hasta 25 componentes por padre.';
+    return;
+  }
+  const html = componentTemplate.innerHTML.replaceAll('__component__', String(index)).replaceAll('__number__', String(index + 1));
+  componentList.insertAdjacentHTML('beforeend', html);
+  componentTotal.value = index + 1;
+  const component = componentList.lastElementChild;
+  component.querySelectorAll('[data-operation-editor]').forEach(editor => {
+    editor.dataset.editorMode = operationModeInput?.value || 'sheet';
+    initOperationEditor(editor);
+  });
+  component.querySelector('input[name$="-code"]')?.focus();
+  componentMessage.textContent = '';
+});
+
+function removeComponent(component) {
+  const checkbox = component.querySelector('input[name$="-DELETE"]');
+  checkbox.checked = true;
+  component.querySelectorAll('input, select, textarea').forEach(input => { if (input !== checkbox) input.disabled = true; });
+  component.hidden = true;
+}
+componentList?.addEventListener('click', event => {
+  const button = event.target.closest('[data-remove-component]');
+  if (!button) return;
+  removeComponent(button.closest('[data-component-editor]'));
+  document.querySelector('[data-add-component]')?.focus();
+});
+componentList?.querySelectorAll('[data-component-editor][hidden]').forEach(removeComponent);
 
 function updateReCount(routeSelect) {
   const source = document.getElementById('route-re-counts');

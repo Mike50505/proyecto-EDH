@@ -1,0 +1,14 @@
+{% if page.paginator.num_pages > 1 %}
+<nav class="page-navigation page-navigation--{{ placement }}" aria-label="{{ label }} ? {% if placement == 'top' %}superior{% else %}inferior{% endif %}">
+  <div class="page-navigation-info">P?gina <strong>{{ page.number }}</strong> de <strong>{{ page.paginator.num_pages }}</strong></div>
+  <div class="page-navigation-buttons">
+    {% if page.has_previous %}<a class="button secondary page-edge" href="{{ first_url }}" aria-label="Primera p?gina" title="Primera p?gina">?</a><a class="button secondary page-step" href="{{ previous_url }}">? Anterior</a>{% else %}<span class="button secondary page-edge is-disabled" aria-disabled="true" aria-label="Primera p?gina">?</span><span class="button secondary page-step is-disabled" aria-disabled="true">? Anterior</span>{% endif %}
+    <div class="page-numbers">{% for item in numbers %}{% if item.ellipsis %}<span class="page-ellipsis" aria-hidden="true">?</span>{% elif item.number == page.number %}<span class="button primary page-number" aria-current="page" aria-label="P?gina {{ item.number }}, actual">{{ item.number }}</span>{% else %}<a class="button secondary page-number" href="{{ item.url }}" aria-label="Ir a p?gina {{ item.number }}">{{ item.number }}</a>{% endif %}{% endfor %}</div>
+    {% if page.has_next %}<a class="button secondary page-step" href="{{ next_url }}">Siguiente ?</a><a class="button secondary page-edge" href="{{ last_url }}" aria-label="?ltima p?gina" title="?ltima p?gina">?</a>{% else %}<span class="button secondary page-step is-disabled" aria-disabled="true">Siguiente ?</span><span class="button secondary page-edge is-disabled" aria-disabled="true" aria-label="?ltima p?gina">?</span>{% endif %}
+  </div>
+  <form method="get" class="page-jump">
+    {% for key,value in filters %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+    <label for="{{ jump_id }}">Ir a</label><input id="{{ jump_id }}" type="number" name="{{ parameter }}" min="1" max="{{ page.paginator.num_pages }}" value="{{ page.number }}" required aria-label="N?mero de p?gina"><button class="button secondary" type="submit">Ir</button>
+  </form>
+</nav>
+{% endif %}

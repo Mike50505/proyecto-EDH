@@ -1,5 +1,6 @@
 import io
 import tempfile
+import uuid
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -11,7 +12,7 @@ from openpyxl import Workbook, load_workbook
 from pypdf import PdfReader
 
 from rutas.forms import ScheduleLineForm
-from rutas.models import BOMItem, Client, ImportIssue, ImportRun, IssuedDocument, Operation, Part, Route, Schedule, ScheduleLine, SourceBook
+from rutas.models import BOMItem, Client, ImportIssue, ImportRun, IssuedDocument, Operation, Part, Route, Schedule, ScheduleLine, SourceBook, UniversoPart
 from rutas.services.documents import (CLASSIC_TEMPLATE, LABEL_MODE_COMPONENTS_ONLY,
     LABEL_MODE_INCLUDE_PARENT, LABEL_MODE_ORIGINAL, MODERN_TEMPLATE, issue_schedule, render_pdf)
 from rutas.services.batch_selection import build_pdf
@@ -95,7 +96,8 @@ class RouteEditorTests(TestCase):
         user = get_user_model().objects.create_superuser("capturista", "c@example.test", "example-long-password")
         client = Client.objects.create(name="RHEEM")
         self.client.force_login(user)
-        page = self.client.get(reverse("rutas:create"))
+        piece = UniversoPart.objects.create(id=uuid.uuid4(), part_number="R-PRUEBA", normalized_number="R-PRUEBA", customer="RHEEM")
+        page = self.client.get(reverse("rutas:create"), {"universe_id": str(piece.pk)})
         self.assertContains(page, 'data-editor-switch="sheet"')
         self.assertContains(page, 'data-editor-switch="form"')
         self.assertContains(page, 'data-family-editor')
@@ -103,7 +105,7 @@ class RouteEditorTests(TestCase):
         self.assertEqual(page.content.count(b'name="family-code"'), 1)
         self.assertContains(page, "Número dibujo")
         prefix = page.context["formset"].prefix
-        data = {"client": client.pk, "family-part_type": "FP", "family-code": "R-PRUEBA",
+        data = {"universe_id":str(piece.pk), "client": client.pk, "family-part_type": "FP", "family-code": "R-PRUEBA",
                 "family-description": "Prueba", "family-bom_revision": "A", "family-drawing_revision": "B",
                 "family-drawing_number": "PL-1", "family-quantity_raw": "3", "family-od_raw": "3/8",
                 "family-wall_raw": "0.028", "family-development_raw": "223*",
@@ -127,6 +129,8 @@ class RouteEditorTests(TestCase):
         self.assertEqual(list(route.operations.values_list("name", flat=True)), ["CORTE", "DOBLEZ"])
         self.assertEqual(route.operations.count(), 2)
 
+        other_piece = UniversoPart.objects.create(id=uuid.uuid4(), part_number="R-INVALIDA", normalized_number="R-INVALIDA", customer="RHEEM")
+        data["universe_id"] = str(other_piece.pk)
         data["family-code"] = "R-INVALIDA"
         data[f"{prefix}-1-position"] = "1"
         data["editor_mode"] = "form"
@@ -148,8 +152,9 @@ class RouteEditorTests(TestCase):
         page = self.client.get(url)
         prefix = page.context["formset"].prefix
         self.assertContains(page, f'name="{prefix}-0-id" value="{operation.pk}"')
-        self.assertContains(page, f'data-client-id="{client.pk}" data-part-code="L-PIEZA"')
-        self.assertContains(page, "L-PIEZA · Manual")
+        self.assertContains(page, 'data-family-editor')
+        self.assertContains(page, 'name="family-code" value="L-PRUEBA"')
+        self.assertContains(page, 'data-add-component')
         data = {"client": client.pk, "part": part.pk, "code": route.code, "description": "",
                 "classification": "General", "revision": "", "status": Route.REVIEW, "version": route.version,
                 "editor_mode": "sheet", f"{prefix}-TOTAL_FORMS": "1", f"{prefix}-INITIAL_FORMS": "1",
@@ -197,6 +202,8 @@ class DocumentTests(TestCase):
         self.user = get_user_model().objects.create_user("lector", password="example-long-password")
         self.client_record = Client.objects.create(name="DAIKIN")
         self.route = Route.objects.create(client=self.client_record, code="0210A00205", description="Pieza inicial", status=Route.ACTIVE)
+        UniversoPart.objects.create(id=uuid.uuid4(), part_number=self.route.code,
+            normalized_number=self.route.code, customer=self.client_record.name)
         Operation.objects.create(route=self.route, position=1, source_sequence="3", name="CORTE", tooling="H-1", inspection="I-1", machine="M-1")
         self.schedule = Schedule.objects.create(client=self.client_record, week="31A", planner="Ana")
         ScheduleLine.objects.create(schedule=self.schedule, route=self.route, shop_order="SO-A", quantity=Decimal("2"), position=1)
@@ -374,7 +381,7 @@ class DocumentTests(TestCase):
         self.assertNotContains(response, '<th>SHOP ORDER</th>')
         self.assertNotContains(response, '<th>Secuencia</th>')
         self.assertContains(response, 'name="label_mode"')
-        self.assertContains(response, 'value="components_only" selected')
+        self.assertContains(response, 'value="include_parent" selected')
         self.assertContains(response, 'value="include_parent"')
         self.assertContains(response, 'value="components_only"')
 
@@ -386,6 +393,7 @@ class DocumentTests(TestCase):
         unique = Route.objects.create(client=rheem, code="RH-UNICO", status=Route.ACTIVE,
                                       classification="Headers", description="Otra ruta RHEEM")
         Operation.objects.create(route=unique, position=1, name="CORTE")
+        UniversoPart.objects.create(id=uuid.uuid4(), part_number=unique.code, normalized_number=unique.code, customer=rheem.name)
         self.user.user_permissions.add(Permission.objects.get(codename="add_schedule"),
                                        Permission.objects.get(codename="add_issueddocument"))
         self.client.force_login(self.user)
@@ -437,6 +445,8 @@ class DocumentTests(TestCase):
 
     def test_excel_upload_and_grid_print_do_not_save_orders(self):
         second = Route.objects.create(client=self.client_record, code="RM-B", status=Route.ACTIVE)
+        UniversoPart.objects.create(id=uuid.uuid4(), part_number=second.code,
+            normalized_number=second.code, customer=self.client_record.name)
         Operation.objects.create(route=second, position=1, name="INSPECCIÓN")
         self.user.user_permissions.add(Permission.objects.get(codename="add_schedule"),
                                        Permission.objects.get(codename="add_issueddocument"))

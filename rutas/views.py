@@ -15,12 +15,14 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from rutas.forms import FamilyForm, ImportForm, OperationFormSet, RouteForm, ScheduleForm, ScheduleLineFormSet
-from rutas.models import Client, ImportIssue, ImportRun, IssuedDocument, Operation, Part, Route, RouteChange, Schedule, ScheduleLine
-from rutas.services.documents import CLASSIC_TEMPLATE, LABEL_MODES, LABEL_MODE_COMPONENTS_ONLY, PRINT_TEMPLATES, issue_schedule, make_label, render_pdf, validate_print_template
+from rutas.forms import FamilyForm, ImportForm, OperationFormSet, RouteForm, ScheduleForm, ScheduleLineFormSet, preset_operation_formset
+from rutas.models import BOMItem, Client, ImportIssue, ImportRun, IssuedDocument, Operation, Part, Route, RouteChange, Schedule, ScheduleLine, UniversoPart
+from rutas.services.documents import CLASSIC_TEMPLATE, LABEL_MODES, LABEL_MODE_COMPONENTS_ONLY, DEFAULT_LABEL_MODE, PRINT_TEMPLATES, issue_schedule, make_label, render_pdf, validate_print_template, preview_labels_for_line, uses_parent_operations
 from rutas.services.batch_selection import blank_rows, build_pdf, read_excel, rows_from_post
 from rutas.services.importer import ImportErrorDetailed, import_workbook
 from rutas.services.source_catalog import CLIENT_VARIANTS
+from rutas.services.catalog import parent_routes, group_routes, pieces_without_routes, piece_has_route
+from rutas.services.component_editor import component_editor, validate_components, save_components, lock_component_versions, fork_part
 
 
 def route_data(route):
@@ -40,12 +42,13 @@ def replace_operations(route, formset):
 @login_required
 def route_list(request):
     query = request.GET.get("q", "").strip()
-    client_name = request.GET.get("client", "DAIKIN")
+    client_name = request.GET.get("client", "")
     status = request.GET.get("status", "")
     classification = request.GET.get("classification", "")
-    if client_name and classification and not Route.objects.filter(client__name=client_name, classification=classification).exists():
+    parents = parent_routes()
+    if client_name and classification and not parents.filter(client__name=client_name, classification=classification).exists():
         classification = ""
-    routes = Route.objects.select_related("client", "part").all()
+    routes = parents.select_related("client", "part")
     if client_name:
         routes = routes.filter(client__name=client_name)
     if query:
@@ -57,8 +60,9 @@ def route_list(request):
     ordering = request.GET.get("order", "code")
     if ordering not in {"code", "-code", "updated_at", "-updated_at"}:
         ordering = "code"
-    page = Paginator(routes.order_by(ordering, "id"), 30).get_page(request.GET.get("page"))
-    classes = Route.objects.filter(client__name=client_name) if client_name else Route.objects.all()
+    grouped = group_routes(routes.order_by(ordering, "id"))
+    page = Paginator(grouped, 30).get_page(request.GET.get("page"))
+    classes = parents.filter(client__name=client_name) if client_name else parents
     return render(request, "rutas/list.html", {"page": page, "query": query, "status": status,
         "client_name": client_name, "clients": Client.objects.order_by("name"),
         "classification": classification, "order": ordering,
@@ -72,7 +76,7 @@ def route_select(request):
     scope = request.POST.get("scope")
     client_name = request.POST.get("client", "")
     if scope == "all":
-        routes = Route.objects.filter(status=Route.ACTIVE)
+        routes = parent_routes().filter(status=Route.ACTIVE)
         if client_name:
             routes = routes.filter(client__name=client_name)
         query = request.POST.get("q", "").strip()
@@ -84,34 +88,80 @@ def route_select(request):
             routes = routes.filter(Q(code__icontains=query) | Q(description__icontains=query) | Q(part__drawing_number__icontains=query))
         if classification:
             routes = routes.filter(classification=classification)
-        ids = list(routes.order_by("code", "id").values_list("id", flat=True)[:201])
-        if len(ids) > 200:
-            messages.error(request, "El filtro contiene más de 200 rutas activas. Acota la búsqueda antes de preparar el lote.")
+        selected_groups = group_routes(routes.select_related("client").order_by("code", "id"))
+        if len(selected_groups) > 200:
+            messages.error(request, "El filtro contiene más de 200 piezas padre. Acota la búsqueda antes de preparar el lote.")
             return redirect("rutas:list")
+    elif request.POST.getlist("group_ids"):
+        try:
+            group_ids = [int(x) for x in request.POST.getlist("group_ids")]
+        except ValueError:
+            return HttpResponseBadRequest("Selección inválida")
+        from rutas.services.universo import normalize
+        selected_codes = {normalize(code) for code in parent_routes().filter(pk__in=group_ids).values_list("code", flat=True)}
+        routes = parent_routes().filter(status=Route.ACTIVE)
+        if client_name:
+            routes = routes.filter(client__name=client_name)
+        if request.POST.get("classification"):
+            routes = routes.filter(classification=request.POST["classification"])
+        selected_groups = [group for group in group_routes(routes.select_related("client").order_by("code", "id"))
+                           if group.normalized_code in selected_codes]
     else:
         try:
             ids = [int(x) for x in request.POST.getlist("route_ids")]
         except ValueError:
             return HttpResponseBadRequest("Selección inválida")
-        valid = set(Route.objects.filter(pk__in=ids, status=Route.ACTIVE).values_list("id", flat=True))
+        valid = set(parent_routes().filter(pk__in=ids, status=Route.ACTIVE).values_list("id", flat=True))
         ids = [pk for pk in ids if pk in valid]
-    if not ids:
+        selected_groups = group_routes(Route.objects.filter(pk__in=ids).select_related("client").order_by("code", "id"))
+    if not selected_groups:
         messages.error(request, "Selecciona al menos una ruta activa.")
         return redirect("rutas:list")
-    selected = {route.pk: route for route in Route.objects.filter(pk__in=ids).select_related("client", "part")}
-    rows = blank_rows(max(12, len(ids)))
-    for index, route_id in enumerate(ids):
-        route = selected[route_id]
-        rows[index].update(parent_code=route.code, route_id=str(route.pk), sequence=str(index + 1),
-                           re=str(route.part.components.filter(component__part_type="RM").count()) if route.part_id else "0")
+    if len(selected_groups) > 200:
+        messages.error(request, "Selecciona hasta 200 piezas padre.")
+        return redirect("rutas:list")
+    rows = blank_rows(max(12, len(selected_groups)))
+    for index, group in enumerate(selected_groups):
+        # An origin must be chosen explicitly when several active variants exist.
+        route_id = str(group.variants[0].pk) if group.variant_count == 1 else ""
+        rows[index].update(parent_code=group.code, route_id=route_id, sequence=str(index + 1))
     return render_batch_page(request, rows, [])
+
+
+def component_context(route):
+    labels, notes, error = [], [], ""
+    has_components = bool(route.part_id and route.part.components.filter(component__part_type="RM").exists())
+    prints_parent_route = uses_parent_operations(route)
+    if has_components and not prints_parent_route:
+        try:
+            labels, notes, _ = preview_labels_for_line(
+                SimpleNamespace(route_id=route.pk, shop_order="—", quantity=Decimal("1"), position=1))
+        except ValueError as exc:
+            error = str(exc)
+    return {"has_components": has_components, "prints_parent_route": prints_parent_route,
+            "bom_components": list(route.part.components.filter(component__part_type="RM").select_related("component")) if prints_parent_route else [],
+            "component_labels": labels, "component_notes": notes, "component_error": error}
+
+
+@login_required
+def route_group(request, pk):
+    from rutas.services.universo import normalize
+    anchor = get_object_or_404(parent_routes(), pk=pk)
+    key = normalize(anchor.code)
+    variants = [r for r in parent_routes().select_related("client", "part", "source").prefetch_related("operations").order_by("classification", "source_row", "id")
+                if normalize(r.code) == key]
+    group = group_routes(variants)[0]
+    return render(request, "rutas/route_group.html", {"group": group,
+        "variants": [{"route": r, **component_context(r)} for r in variants], "label_modes": LABEL_MODES})
 
 
 @login_required
 def route_detail(request, pk):
     route = get_object_or_404(Route.objects.select_related("client", "part", "source").prefetch_related("operations", "history__user"), pk=pk)
     issues = ImportIssue.objects.filter(run__source=route.source, sheet="Ruta", row=route.source_row) if route.source_id else ImportIssue.objects.none()
-    return render(request, "rutas/detail.html", {"route": route, "issues": issues})
+    return render(request, "rutas/detail.html", {"route": route, "issues": issues,
+        "component_parents": Route.objects.filter(part__components__component_route=route).distinct(),
+        **component_context(route), "label_modes": LABEL_MODES})
 
 
 @login_required
@@ -123,14 +173,20 @@ def route_print(request, pk):
     except ValueError as exc:
         return HttpResponseBadRequest(str(exc))
     route = get_object_or_404(Route.objects.select_related("client", "part").prefetch_related("operations"), pk=pk)
-    line = SimpleNamespace(shop_order="—", position=1)
-    label = make_label(route, route, route.part, line, Decimal("0"), 1, 1)
-    label["quantity"] = "—"
+    label_mode = request.GET.get("label_mode", DEFAULT_LABEL_MODE)
+    line = SimpleNamespace(route_id=route.pk, shop_order="—", quantity=Decimal("1"), position=1)
+    try:
+        labels, _, needs_review = preview_labels_for_line(line, label_mode)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect("rutas:detail", pk=route.pk)
+    for label in labels:
+        label["quantity"] = "—"
     snapshot = {
         "client": route.client.name, "week": "—", "line": "—", "copies": 1,
         "planner": "—", "responsible": "—", "issue_date": timezone.localdate().isoformat(),
-        "ship_date": "", "lines": [], "labels": [label],
-        "preview_status": "VISTA PREVIA · NO PRODUCCIÓN" if route.status == Route.ACTIVE else "RUTA SIN APROBAR · NO PRODUCCIÓN",
+        "ship_date": "", "lines": [], "labels": labels, "label_mode": label_mode,
+        "preview_status": "RUTA SIN APROBAR · NO PRODUCCIÓN" if needs_review else "VISTA PREVIA · NO PRODUCCIÓN",
     }
     response = FileResponse(BytesIO(render_pdf(snapshot, template_key)), content_type="application/pdf", as_attachment=False,
                             filename=f"ruta-{route.pk}-vista-previa.pdf")
@@ -146,7 +202,7 @@ def batch_print(request):
     errors = []
     notice = ""
     template_key = request.POST.get("template_key", CLASSIC_TEMPLATE)
-    label_mode = request.POST.get("label_mode", LABEL_MODE_COMPONENTS_ONLY)
+    label_mode = request.POST.get("label_mode", DEFAULT_LABEL_MODE)
     if request.method == "POST":
         action = request.POST.get("action")
         try:
@@ -189,14 +245,16 @@ def batch_print(request):
 
 
 def render_batch_page(request, rows, errors, notice="", template_key=CLASSIC_TEMPLATE,
-                      label_mode=LABEL_MODE_COMPONENTS_ONLY):
+                      label_mode=DEFAULT_LABEL_MODE):
     route_catalog = {}
-    route_values = Route.objects.exclude(status=Route.ARCHIVED).exclude(code="").annotate(
+    route_values = parent_routes().exclude(status=Route.ARCHIVED).exclude(code="").annotate(
         rm_count=Count("part__components", filter=Q(part__components__component__part_type="RM"))
     ).order_by("client__name", "classification", "source_row", "id").values_list(
-        "id", "client__name", "classification", "code", "source_row", "rm_count", "status")
-    for pk, client, variant, code, source_row, count, status in route_values:
+        "id", "client__name", "classification", "code", "source_row", "rm_count", "status", "source__filename")
+    for pk, client, variant, code, source_row, count, status, filename in route_values:
         label = f"{client} · {variant or 'Captura web'}"
+        if filename:
+            label += f" · {filename}"
         if source_row:
             label += f" · fila {source_row}"
         route_catalog.setdefault(code.strip().upper(), []).append({
@@ -214,7 +272,7 @@ def render_batch_page(request, rows, errors, notice="", template_key=CLASSIC_TEM
         if len(options) > 1 and not chosen:
             warnings.append(f"Fila {index + 1}: {code} existe en varias rutas. Elige la correcta en esa fila.")
         selected_option = next((option for option in options if str(option["id"]) == chosen), None)
-        if selected_option and selected_option["status"] != Route.ACTIVE:
+        if settings.ROUTE_REVIEW_VISIBLE and selected_option and selected_option["status"] != Route.ACTIVE:
             warnings.append(f"Fila {index + 1}: {code} está Por revisar. El PDF será una vista previa no aprobada.")
     return render(request, "rutas/batch_print.html", {"rows": rows, "errors": errors,
         "parent_codes": parent_codes, "route_catalog": route_catalog,
@@ -234,53 +292,139 @@ def batch_template(request):
 @permission_required("rutas.add_route", raise_exception=True)
 def route_create(request):
     route = Route(status=Route.REVIEW)
+    universe_id = request.POST.get("universe_id") if request.method == "POST" else request.GET.get("universe_id")
+    if not universe_id:
+        if request.method == "POST":
+            return HttpResponseBadRequest("Selecciona primero una pieza activa de Universo Ramos sin ruta.")
+        query = request.GET.get("q", "").strip()
+        pieces = pieces_without_routes()
+        if query:
+            pieces = pieces.filter(Q(part_number__icontains=query) | Q(customer__icontains=query))
+        return render(request, "rutas/select_new_route.html", {
+            "page": Paginator(pieces.order_by("part_number", "id"), 20).get_page(request.GET.get("page")),
+            "query": query})
+    universe_piece = get_object_or_404(UniversoPart, pk=universe_id, active=True) if universe_id else None
+    if piece_has_route(universe_piece):
+        return HttpResponseBadRequest("Esta pieza ya tiene una ruta. Abre su detalle para editarla.")
+    initial, family_initial = {}, {}
+    if universe_piece:
+        client, _ = Client.objects.get_or_create(name=universe_piece.customer)
+        initial = {"client": client.pk, "status": Route.REVIEW}
+        family_initial = {"code": universe_piece.part_number, "part_type": "FP",
+            "od_raw": universe_piece.data.get("diameter", ""),
+            "wall_raw": universe_piece.data.get("wall") or universe_piece.data.get("wall_note", "")}
     route_data_post = request.POST.copy() if request.method == "POST" else None
     if route_data_post is not None:
         route_data_post["code"] = route_data_post.get("family-code", "").strip()
         route_data_post["description"] = route_data_post.get("family-description", "").strip()
         route_data_post["part"] = ""
-    form = RouteForm(route_data_post, instance=route)
-    family_form = FamilyForm(request.POST or None, prefix="family")
-    formset = OperationFormSet(request.POST or None, instance=route)
-    if request.method == "POST" and all((form.is_valid(), family_form.is_valid(), formset.is_valid())):
+    form = RouteForm(route_data_post, instance=route, initial=initial)
+    form.fields["client"].disabled = True
+    family_form = FamilyForm(request.POST or None, prefix="family", initial=family_initial)
+    family_form.fields["code"].widget.attrs["readonly"] = True
+    family_form.fields["part_type"].disabled = True
+    formset = preset_operation_formset(request.POST or None, instance=route)
+    children = component_editor(request.POST if request.method == "POST" else None)
+    if request.method == "POST" and all((form.is_valid(), family_form.is_valid(), formset.is_valid(),
+            validate_components(children, universe_piece.part_number))):
+        if universe_piece:
+            from rutas.services.universo import normalize
+            if normalize(family_form.cleaned_data["code"]) != universe_piece.normalized_number:
+                family_form.add_error("code", "El número de parte debe corresponder a la pieza de Universo seleccionada.")
+            if normalize(form.cleaned_data["client"].name) != normalize(universe_piece.customer):
+                form.add_error("client", "El cliente debe corresponder a la pieza de Universo seleccionada.")
+            if form.errors or family_form.errors:
+                return render(request, "rutas/edit.html", {"form": form, "family_form": family_form,
+                    "formset": formset, "title": "Nueva ruta", "universe_piece": universe_piece, **children})
         with transaction.atomic():
+            universe_piece = UniversoPart.objects.select_for_update().get(pk=universe_piece.pk)
+            if not universe_piece.active or piece_has_route(universe_piece):
+                form.add_error(None, "La pieza ya tiene ruta o dejó de estar activa en Universo. Selecciona otra pieza.")
+                return render(request, "rutas/edit.html", {"form": form, "family_form": family_form,
+                    "formset": formset, "title": "Nueva ruta", "universe_piece": universe_piece, **children})
             part = family_form.save(commit=False)
+            part.code = universe_piece.part_number
             part.client = form.cleaned_data["client"]
             part.save()
             route = form.save(commit=False)
+            route.universe_part = universe_piece
             route.part = part
             route.code = part.code
             route.description = part.description
             route.save()
             replace_operations(route, formset)
+            save_components(children, route, request.user, replace_operations)
             RouteChange.objects.create(route=route, user=request.user, action="create", after=route_data(route))
         messages.success(request, "Ruta creada.")
         return redirect("rutas:detail", pk=route.pk)
     return render(request, "rutas/edit.html", {"form": form, "family_form": family_form,
-                                               "formset": formset, "title": "Nueva ruta"})
+                                               "formset": formset, "title": "Nueva ruta", "universe_piece": universe_piece, **children})
 
 
 @login_required
 @permission_required("rutas.change_route", raise_exception=True)
 def route_edit(request, pk):
-    route = get_object_or_404(Route, pk=pk)
-    form = RouteForm(request.POST or None, instance=route)
-    formset = OperationFormSet(request.POST or None, instance=route)
-    if request.method == "POST" and form.is_valid() and formset.is_valid():
-        with transaction.atomic():
-            locked = Route.objects.select_for_update().get(pk=pk)
-            if form.cleaned_data["version"] != locked.version:
-                form.add_error(None, "Otra persona modificó esta ruta. Recargue para revisar los cambios.")
-            else:
-                before = route_data(locked)
-                updated = form.save(commit=False)
-                updated.version = locked.version + 1
-                updated.save()
-                replace_operations(updated, formset)
-                RouteChange.objects.create(route=updated, user=request.user, action="edit", before=before, after=route_data(updated))
-                messages.success(request, "Ruta actualizada.")
-                return redirect("rutas:detail", pk=pk)
-    return render(request, "rutas/edit.html", {"form": form, "formset": formset, "route": route, "title": "Editar ruta"})
+    route = get_object_or_404(Route.objects.select_related("part", "client"), pk=pk)
+    original_code = route.code
+    posted = request.POST if request.method == "POST" else None
+    family_submitted = posted is not None and "family-code" in posted
+    route_data_post = posted.copy() if posted is not None else None
+    if family_submitted:
+        route_data_post["code"] = posted.get("family-code", "")
+        route_data_post["description"] = posted.get("family-description", "")
+    form = RouteForm(route_data_post, instance=route)
+    form.fields["client"].disabled = True
+    form.fields["part"].disabled = True
+    family_form = FamilyForm(posted if family_submitted else None, prefix="family",
+        instance=route.part or Part(client=route.client, part_type="FP"),
+        initial={"code": original_code, "description": route.description})
+    family_form.fields["code"].widget.attrs["readonly"] = True
+    family_form.fields["part_type"].disabled = True
+    formset = preset_operation_formset(posted, instance=route)
+    children = component_editor(posted, parent=route)
+    context = {"form": form, "family_form": family_form, "formset": formset,
+               "route": route, "title": "Editar ruta", **children}
+    if request.method == "POST":
+        valid = all((form.is_valid(), family_form.is_valid() if family_submitted else True,
+            formset.is_valid(), validate_components(children, original_code) if children["components_submitted"] else True))
+        if family_submitted and family_form.is_valid():
+            from rutas.services.universo import normalize
+            if normalize(family_form.cleaned_data["code"]) != normalize(original_code):
+                family_form.add_error("code", "El n\u00famero de la pieza no se cambia al editar sus procesos.")
+                valid = False
+        if valid:
+            with transaction.atomic():
+                locked = Route.objects.select_for_update().get(pk=pk)
+                if form.cleaned_data["version"] != locked.version:
+                    form.add_error(None, "Otra persona modific\u00f3 esta ruta. Recarga para revisar los cambios.")
+                elif children["components_submitted"] and not lock_component_versions(children):
+                    pass
+                else:
+                    before = route_data(locked)
+                    updated = form.save(commit=False)
+                    if family_submitted or (children["components_submitted"] and not locked.part_id):
+                        part = family_form.save(commit=False) if family_submitted else Part(
+                            client=locked.client, code=original_code, description=locked.description, part_type="FP")
+                        old_part_id = part.pk
+                        if part.pk and (part.source_id or Route.objects.filter(part=part).exclude(pk=pk).exists()):
+                            part = fork_part(part)
+                        part.client = locked.client
+                        part.save()
+                        if old_part_id and part.pk != old_part_id:
+                            BOMItem.objects.bulk_create([BOMItem(parent=part, component_id=item.component_id,
+                                component_route_id=item.component_route_id, position=item.position,
+                                quantity_per=item.quantity_per, source_raw_quantity=item.source_raw_quantity)
+                                for item in BOMItem.objects.filter(parent_id=old_part_id)])
+                        updated.part, updated.code, updated.description = part, part.code, part.description
+                    updated.version = locked.version + 1
+                    updated.save()
+                    replace_operations(updated, formset)
+                    if children["components_submitted"]:
+                        save_components(children, updated, request.user, replace_operations)
+                    RouteChange.objects.create(route=updated, user=request.user, action="edit", before=before, after=route_data(updated))
+                    messages.success(request, "Ruta actualizada.")
+                    return redirect("rutas:detail", pk=pk)
+    return render(request, "rutas/edit.html", context)
 
 
 @login_required
@@ -288,15 +432,8 @@ def route_edit(request, pk):
 @require_POST
 def route_duplicate(request, pk):
     original = get_object_or_404(Route.objects.prefetch_related("operations"), pk=pk)
-    with transaction.atomic():
-        duplicate = Route.objects.create(client=original.client, part=original.part, code=original.code,
-            description=original.description, classification=original.classification, revision=original.revision,
-            status=Route.REVIEW)
-        Operation.objects.bulk_create([Operation(route=duplicate, position=op.position, source_sequence=op.source_sequence,
-            name=op.name, machine=op.machine, tooling=op.tooling, inspection=op.inspection)
-            for op in original.operations.all()])
-        RouteChange.objects.create(route=duplicate, user=request.user, action="duplicate", after=route_data(duplicate))
-    return redirect("rutas:edit", pk=duplicate.pk)
+    return HttpResponseBadRequest("Esta pieza ya tiene una ruta. Edita la existente; las rutas nuevas se crean desde una pieza de Universo sin ruta.")
+
 
 
 @login_required
@@ -319,7 +456,7 @@ def schedule_create(request):
     if request.method == "POST" and request.POST.get("action") == "print_all" and not request.user.has_perm("rutas.add_issueddocument"):
         raise PermissionDenied
     template_key = request.POST.get("template_key", CLASSIC_TEMPLATE)
-    label_mode = request.POST.get("label_mode", LABEL_MODE_COMPONENTS_ONLY)
+    label_mode = request.POST.get("label_mode", DEFAULT_LABEL_MODE)
     schedule = Schedule(created_by=request.user)
     selected = list(Route.objects.filter(pk__in=request.session.get("selected_route_ids", [])).order_by("code", "id")) if request.method == "GET" else []
     form = ScheduleForm(request.POST or None, instance=schedule, initial={"client": selected[0].client_id} if selected else None)
@@ -379,7 +516,7 @@ def schedule_issue(request, pk):
     schedule = get_object_or_404(Schedule, pk=pk)
     try:
         document = issue_schedule(schedule, request.user, request.POST.get("template_key", CLASSIC_TEMPLATE),
-                                  request.POST.get("label_mode", LABEL_MODE_COMPONENTS_ONLY))
+                                  request.POST.get("label_mode", DEFAULT_LABEL_MODE))
     except ValueError as exc:
         messages.error(request, str(exc))
         return redirect("rutas:schedule_detail", pk=pk)

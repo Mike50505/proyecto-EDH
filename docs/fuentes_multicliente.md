@@ -21,3 +21,7 @@ El catálogo conserva filtros de consulta por cliente y variante. La tabla tempo
 Las tres fuentes nuevas tienen `print_approved=False`. Sus rutas pueden generar una **vista previa NO APROBADA**, pero no un documento emitido. Para aprobar un formato, cotejar el PDF con la etiqueta real del cliente, confirmar dimensiones y contenido con una impresión física y registrar la decisión en el administrador del libro de origen. Después se resuelven las incidencias aplicables y se activa cada ruta revisada. Resolver incidencias o aprobar el formato, por separado, no activa rutas automáticamente.
 
 El respaldo anterior a esta importación se conserva localmente en `tmp/edh-before-multiclient.dump`; ese archivo está excluido de Git.
+
+## Procesos registrados en el padre
+
+En una ruta importada, si el padre tiene operaciones y ninguno de sus materiales RM tiene una ruta en el mismo libro, la impresi?n utiliza una sola etiqueta del padre con sus operaciones. Los materiales se muestran por separado en el detalle. Ejemplo: `626794-01` contiene cuatro operaciones; `626794-01A` es un material de Familias sin ruta propia. No se crean operaciones para ese material. Si existen rutas de componentes parciales o archivadas, se conserva la validaci?n; tampoco se omiten las comprobaciones de revisi?n y aprobaci?n para emitir documentos.
