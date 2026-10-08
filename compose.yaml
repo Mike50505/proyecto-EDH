@@ -22,7 +22,7 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "127.0.0.1:38082:8000"
     volumes:
       - media_data:/app/media
     healthcheck:
@@ -38,6 +38,17 @@ services:
     depends_on:
       web:
         condition: service_healthy
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.0
+    user: "1000:1000"
+    restart: unless-stopped
+    command: tunnel --config /etc/cloudflared/config.yml run
+    depends_on:
+      web:
+        condition: service_healthy
+    volumes:
+      - ./cloudflared.yml:/etc/cloudflared/config.yml:ro
+      - /home/sistemasmr/.cloudflared/338f68d8-8b83-48ea-bb7d-05bba05b5540.json:/etc/cloudflared/credentials.json:ro
 volumes:
   postgres_data:
   media_data:

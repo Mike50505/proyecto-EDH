@@ -1,0 +1,7 @@
+tunnel: 338f68d8-8b83-48ea-bb7d-05bba05b5540
+credentials-file: /etc/cloudflared/credentials.json
+
+ingress:
+  - hostname: edh.mesaramos.com
+    service: http://web:8000
+  - service: http_status:404
